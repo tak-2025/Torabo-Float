@@ -6,7 +6,9 @@
 import {
   CSSProperties,
   PropsWithChildren,
+  useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -31,7 +33,19 @@ interface PhysicalLayoutProps {
   /** Highlight predicate: pressed positions get the accent. */
   isPositionSelected?: (position: number) => boolean;
   oneU?: number;
+  /**
+   * "auto" (default) fits the content to the parent stage. A number is a fixed
+   * scale factor (1 = 100%, content rendered at oneU px per key-unit × zoom)
+   * and disables fit-to-stage — the caller is then responsible for sizing the
+   * window/stage around it (see App's manual-scale window auto-fit).
+   */
   zoom?: LayoutZoom;
+  /**
+   * Fires with the *unscaled* content box in px (rotation sweep included)
+   * whenever it changes. Lets the parent size the window to wrap the board in
+   * manual-scale mode. Must be a stable reference or it fires every render.
+   */
+  onContentSize?: (width: number, height: number) => void;
 }
 
 interface PhysicalLayoutPositionLocation {
@@ -149,43 +163,64 @@ export const PhysicalLayout = ({
   isPositionSelected,
   oneU = 48,
   zoom = "auto",
+  onContentSize,
 }: PhysicalLayoutProps) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
+  // Available space of the *stage* (our parent), tracked via ResizeObserver.
+  // We measure the stage — the element that actually defines available space —
+  // NOT our own content box: the content box is a constant px size per layout,
+  // so observing it would never re-fire when the stage grows (controls pill
+  // unmounting on connect, window resize, log-view toggle). Starts at 0 and the
+  // observer fills it in synchronously on mount (before paint).
+  const [stage, setStage] = useState({ w: 0, h: 0 });
 
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-
     const parent = element.parentElement;
     if (!parent) return;
 
-    const calculateScale = () => {
-      if (zoom === "auto") {
-        const padding = Math.min(window.innerWidth, window.innerHeight) * 0.05;
-        const newScale = Math.min(
-          parent.clientWidth / (element.clientWidth + 2 * padding),
-          parent.clientHeight / (element.clientHeight + 2 * padding)
-        );
-        setScale(newScale > 0 ? newScale : 1);
-      } else {
-        setScale(zoom || 1);
-      }
-    };
-
-    calculateScale();
-
-    const resizeObserver = new ResizeObserver(() => calculateScale());
-    resizeObserver.observe(element);
+    const measure = () =>
+      setStage((prev) =>
+        prev.w === parent.clientWidth && prev.h === parent.clientHeight
+          ? prev
+          : { w: parent.clientWidth, h: parent.clientHeight }
+      );
+    measure();
+    const resizeObserver = new ResizeObserver(measure);
     resizeObserver.observe(parent);
-
     return () => resizeObserver.disconnect();
-  }, [zoom, positions]);
+  }, []);
 
-  // True content box (rotation sweep + min-x/min-y normalization) drives both the
-  // sized box below and — since element.clientWidth/Height then equal these — the
-  // ResizeObserver scale math and the flex centering of the stage.
-  const bounds = computeContentBounds(positions, oneU);
+  // True content box (rotation sweep + min-x/min-y normalization). Drives the
+  // sized box below, the fit math, and the flex centering of the stage.
+  const bounds = useMemo(
+    () => computeContentBounds(positions, oneU),
+    [positions, oneU]
+  );
+
+  // Report the unscaled content size upward for window auto-fit (manual scale).
+  useEffect(() => {
+    onContentSize?.(bounds.width, bounds.height);
+  }, [bounds.width, bounds.height, onContentSize]);
+
+  // Scale is derived from the current stage size + content bounds during render,
+  // so a layout switch (positions → new bounds) and a stage resize both produce
+  // the correct scale in the SAME commit — no stale-scale frame. In "auto" the
+  // min() caps content×scale against BOTH stage axes (padding subtracted first),
+  // so the board can never exceed the stage. A numeric zoom is applied verbatim
+  // (fit-to-stage disabled) for the manual display-scale setting.
+  const scale = useMemo(() => {
+    if (typeof zoom === "number") return zoom > 0 ? zoom : 1;
+    if (bounds.width <= 0 || bounds.height <= 0 || stage.w <= 0 || stage.h <= 0)
+      return 1;
+    const padding = Math.min(stage.w, stage.h) * 0.05;
+    const newScale = Math.min(
+      stage.w / (bounds.width + 2 * padding),
+      stage.h / (bounds.height + 2 * padding)
+    );
+    return newScale > 0 ? newScale : 1;
+  }, [zoom, bounds.width, bounds.height, stage.w, stage.h]);
 
   const positionItems = positions.map((p, idx) => (
     <div

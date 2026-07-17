@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   AvailableDevice,
   close as bleClose,
@@ -32,6 +32,23 @@ const SETTINGS_KEY = "torabo-float-settings";
 const MIN_ALPHA = 0.3;
 const MAX_ALPHA = 1;
 
+// Display-scale setting. "auto" keeps the fit-to-window behavior; a number is a
+// percentage of the oneU=48px basis (100 = keys drawn at 48px). In manual mode
+// the window is auto-resized to wrap the board (see the auto-fit effect below).
+const MIN_SCALE = 50;
+const MAX_SCALE = 200;
+const SCALE_STEP = 5;
+// Floor so a tiny board / narrow layout can't collapse the window to nothing.
+const MIN_WIN_W = 280;
+const MIN_WIN_H = 160;
+
+type BoardScale = "auto" | number;
+
+function clampScale(v: number): number {
+  if (!Number.isFinite(v)) return 100;
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.round(v)));
+}
+
 type ThemeId = "pale" | "dark" | "sakura" | "mint" | "contrast";
 const THEME_IDS: ThemeId[] = ["pale", "dark", "sakura", "mint", "contrast"];
 
@@ -50,13 +67,21 @@ interface FloatSettings {
   uiAlpha: number;
   keyLayout: KeyLayout; // which legend faces to draw (default JIS)
   theme: ThemeId; // key/pill color palette (default "pale")
+  boardScale: BoardScale; // "auto" fit-to-window, or a percent 50–200
 }
 
 const DEFAULT_SETTINGS: FloatSettings = {
   uiAlpha: 1,
   keyLayout: "jis",
   theme: "pale",
+  boardScale: "auto",
 };
+
+function parseBoardScale(v: unknown): BoardScale {
+  if (v === "auto" || v === undefined || v === null) return "auto";
+  const n = Number(v);
+  return Number.isFinite(n) ? clampScale(n) : "auto";
+}
 
 function clampAlpha(v: number): number {
   if (!Number.isFinite(v)) return 1;
@@ -74,6 +99,7 @@ function loadSettings(): FloatSettings {
       theme: THEME_IDS.includes(parsed.theme as ThemeId)
         ? (parsed.theme as ThemeId)
         : "pale",
+      boardScale: parseBoardScale(parsed.boardScale),
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -100,10 +126,25 @@ export function App() {
     () => loadSettings().keyLayout
   );
   const [theme, setTheme] = useState<ThemeId>(() => loadSettings().theme);
+  const [boardScale, setBoardScale] = useState<BoardScale>(
+    () => loadSettings().boardScale
+  );
+  // Last unscaled content box (px) reported by the board, for window auto-fit.
+  const [contentSize, setContentSize] = useState<{ w: number; h: number }>({
+    w: 0,
+    h: 0,
+  });
+  const onContentSize = useCallback((w: number, h: number) => {
+    setContentSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+  }, []);
 
   const setUiAlpha = useCallback((v: number) => {
     setUiAlphaState(clampAlpha(v));
   }, []);
+
+  // Percent value backing the manual slider — remembered even while in "auto"
+  // so toggling 手動 restores the last chosen %, defaulting to 100.
+  const scalePercent = typeof boardScale === "number" ? boardScale : 100;
 
   // Apply --ui-alpha + data-theme to the document root (the "container" the
   // header/board/pill chrome reads via var(--ui-alpha) and the [data-theme=…]
@@ -115,12 +156,48 @@ export function App() {
     try {
       localStorage.setItem(
         SETTINGS_KEY,
-        JSON.stringify({ uiAlpha, keyLayout, theme })
+        JSON.stringify({ uiAlpha, keyLayout, theme, boardScale })
       );
     } catch {
       /* localStorage unavailable (privacy mode / quota) — non-fatal */
     }
-  }, [uiAlpha, keyLayout, theme]);
+  }, [uiAlpha, keyLayout, theme, boardScale]);
+
+  // Manual display-scale → auto-resize the window to wrap the board. The stage
+  // (`.floatboard-stage`) flex-grows to fill whatever the chrome leaves, so the
+  // non-stage chrome height is exactly `innerHeight − stageHeight` right now;
+  // adding the desired board box (content px × scale) to that measured chrome
+  // gives the window size that makes the stage equal the board — robust to the
+  // settings row / banners being open. Width chrome is just the body padding.
+  // In "auto" mode we never touch the window (fit-to-window handles it).
+  useEffect(() => {
+    if (boardScale === "auto") return;
+    if (contentSize.w <= 0 || contentSize.h <= 0) return;
+
+    // Defer one frame so the DOM reflects the current chrome (e.g. settings row
+    // just toggled) before we measure it.
+    const raf = requestAnimationFrame(() => {
+      const stage = document.querySelector(
+        ".floatboard-stage"
+      ) as HTMLElement | null;
+      if (!stage) return;
+      const stageRect = stage.getBoundingClientRect();
+      const chromeW = Math.max(0, window.innerWidth - stageRect.width);
+      const chromeH = Math.max(0, window.innerHeight - stageRect.height);
+
+      const scale = boardScale / 100;
+      const boardW = contentSize.w * scale;
+      const boardH = contentSize.h * scale;
+
+      const w = Math.max(MIN_WIN_W, Math.ceil(boardW + chromeW));
+      const h = Math.max(MIN_WIN_H, Math.ceil(boardH + chromeH));
+
+      getCurrentWindow()
+        .setSize(new LogicalSize(w, h))
+        .catch((e) => console.warn("[window] setSize failed", e));
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [boardScale, contentSize.w, contentSize.h, showSettings]);
 
   // Fresh cache for the long-lived event listener's staleness check.
   const cacheRef = useRef<CachedKeymap | null>(null);
@@ -350,6 +427,34 @@ export function App() {
               />
             ))}
           </div>
+          <span className="settings-label">サイズ</span>
+          <div className="seg" role="group" aria-label="表示サイズ">
+            <button
+              className={`seg-btn${boardScale === "auto" ? " seg-on" : ""}`}
+              onClick={() => setBoardScale("auto")}
+            >
+              自動
+            </button>
+            <button
+              className={`seg-btn${boardScale !== "auto" ? " seg-on" : ""}`}
+              onClick={() => setBoardScale(clampScale(scalePercent))}
+            >
+              手動
+            </button>
+          </div>
+          {boardScale !== "auto" && (
+            <>
+              <input
+                type="range"
+                min={MIN_SCALE}
+                max={MAX_SCALE}
+                step={SCALE_STEP}
+                value={scalePercent}
+                onChange={(e) => setBoardScale(clampScale(Number(e.target.value)))}
+              />
+              <span className="settings-value">{scalePercent}%</span>
+            </>
+          )}
         </div>
       )}
 
@@ -414,6 +519,8 @@ export function App() {
             highestLayer={layer.highestLayer}
             pressed={pressed}
             keyLayout={keyLayout}
+            boardScale={boardScale}
+            onContentSize={onContentSize}
           />
         ) : (
           <div className="empty muted">

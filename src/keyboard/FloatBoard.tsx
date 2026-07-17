@@ -27,6 +27,10 @@ interface FloatBoardProps {
   highestLayer: number; // live highest active layer *id*
   pressed: Set<number>;
   keyLayout: KeyLayout; // "us" | "jis" — which legend faces to draw
+  /** "auto" fits to the stage; a number is a fixed scale factor (1 = 100%). */
+  boardScale: "auto" | number;
+  /** Bubbles the unscaled content px up so App can size the window (manual). */
+  onContentSize?: (width: number, height: number) => void;
 }
 
 // The face drawn on a key body. For keyboard-page usages that appear in the
@@ -86,6 +90,8 @@ export function FloatBoard({
   highestLayer,
   pressed,
   keyLayout,
+  boardScale,
+  onContentSize,
 }: FloatBoardProps) {
   // Pick the layout the firmware reports as active, falling back to the cached
   // active index, then clamp into range.
@@ -164,7 +170,8 @@ export function FloatBoard({
           <PhysicalLayout
             positions={positions}
             oneU={48}
-            zoom="auto"
+            zoom={boardScale}
+            onContentSize={onContentSize}
             isPositionSelected={(i) => pressed.has(i)}
           />
         ) : (
