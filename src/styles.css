@@ -515,9 +515,12 @@ select {
   overflow: hidden;
 }
 
-/* --- keyboard rendering (plain CSS port of Key/PhysicalLayout) --- */
-.phys-layout {
-  transform-origin: center center;
+/* --- keyboard rendering (plain CSS port of Key/PhysicalLayout) ---
+   .phys-layout is the flex item and is sized to the *scaled* board box so the
+   stage's flex centering lands it exactly; the transform lives on the inner
+   .phys-layout-content (origin top-left). See PhysicalLayout.tsx. */
+.phys-layout-content {
+  transform-origin: top left;
 }
 
 .key {

@@ -231,18 +231,37 @@ export const PhysicalLayout = ({
     </div>
   ));
 
+  // Two-box structure so flex centering is exact. The OUTER wrapper is the flex
+  // item and carries the *scaled* size (bounds × scale) — the box the stage's
+  // `justify-content/align-items: center` actually centers. `flex-shrink: 0`
+  // stops the flex algorithm from collapsing that width when the board is larger
+  // than the stage (auto-fit down-scale): a shrunk border-box would no longer be
+  // centered on the content, which is exactly what pushed the board rightward.
+  // The INNER box holds the unscaled content and applies `scale()` from its
+  // top-left, so scaled content fills the outer box precisely and centers with
+  // it — correct for scale < 1 and > 1, auto and manual zoom.
   return (
     <div
       className="phys-layout"
       style={{
-        position: "relative",
-        height: bounds.height + "px",
-        width: bounds.width + "px",
-        transform: `scale(${scale})`,
+        flexShrink: 0,
+        width: bounds.width * scale + "px",
+        height: bounds.height * scale + "px",
       }}
       ref={ref}
     >
-      {positionItems}
+      <div
+        className="phys-layout-content"
+        style={{
+          position: "relative",
+          height: bounds.height + "px",
+          width: bounds.width + "px",
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+        }}
+      >
+        {positionItems}
+      </div>
     </div>
   );
 };
