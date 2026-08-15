@@ -30,6 +30,9 @@ pub struct ActiveConnection<'a> {
     // previous task instead of spawning a second forwarder (which would double
     // every event). Cleared/aborted on disconnect and close.
     pub live_feed_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    // Same as live_feed_task, for the diag (af02) NOTIFY-forwarding task. Makes
+    // diag_subscribe idempotent and lets disconnect/close tear it down.
+    pub diag_task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
 }
 
 /// Send a raw RPC frame to the keyboard. Used by the (phase 3) RPC layer.
@@ -54,6 +57,9 @@ pub async fn transport_close(
     state: State<'_, ActiveConnection<'_>>,
 ) -> Result<(), ()> {
     if let Some(task) = state.live_feed_task.lock().await.take() {
+        task.abort();
+    }
+    if let Some(task) = state.diag_task.lock().await.take() {
         task.abort();
     }
     *state.conn.lock().await = None;

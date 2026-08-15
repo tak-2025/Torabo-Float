@@ -30,3 +30,25 @@ export function liveFeedSubscribe(): Promise<boolean> {
 export function liveFeedReadSnapshot(): Promise<number[]> {
   return invoke<number[]>("live_feed_read_snapshot");
 }
+
+/**
+ * Subscribe to the diag characteristic (af02, starts emitting
+ * live_feed_diag_event). Rejects if the char is absent (older firmware without
+ * diag mode) — callers should catch that to show the "unsupported" notice.
+ */
+export function diagSubscribe(): Promise<boolean> {
+  return invoke<boolean>("diag_subscribe");
+}
+
+/**
+ * One-shot read of the diag characteristic (af02). Returns the raw buffer of
+ * MULTIPLE concatenated 16-byte DIAG records (all known devices).
+ */
+export function diagReadSnapshot(): Promise<number[]> {
+  return invoke<number[]>("diag_read_snapshot");
+}
+
+/** Toggle the diag heartbeat stream (WRITE 1=on / 0=off to af02). */
+export function diagSetStreaming(on: boolean): Promise<boolean> {
+  return invoke<boolean>("diag_set_streaming", { on });
+}

@@ -479,6 +479,105 @@ select {
   font-size: 12px;
 }
 
+/* --- diagnostics panel (診断モード) — a readable translucent tool panel,
+   like the debug log it is NOT dimmed by --ui-alpha so it stays legible. --- */
+.diag {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.diag-note {
+  background: var(--log-bg);
+  border: 1px solid var(--log-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+.diag-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.diag-row {
+  background: var(--log-bg);
+  border: 1px solid var(--log-border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  color: var(--log-fg);
+}
+.diag-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.diag-label {
+  font-weight: 700;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diag-chip {
+  margin-left: auto;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.diag-chip-ok {
+  background: rgba(52, 199, 119, 0.16);
+  border-color: rgba(52, 199, 119, 0.5);
+}
+.diag-chip-idle {
+  background: rgba(224, 172, 46, 0.16);
+  border-color: rgba(224, 172, 46, 0.5);
+}
+.diag-chip-fail {
+  background: rgba(224, 96, 90, 0.16);
+  border-color: rgba(224, 96, 90, 0.5);
+}
+.diag-chip-absent {
+  background: rgba(139, 149, 165, 0.14);
+  border-color: rgba(139, 149, 165, 0.4);
+  color: var(--muted);
+}
+.diag-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.diag-badge {
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  color: var(--pill-fg);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.diag-badge-err {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-fg);
+}
+.diag-row-enc {
+  margin-top: 4px;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--log-fg);
+}
+
 /* --- FloatBoard --- */
 .floatboard {
   flex: 1 1 auto;

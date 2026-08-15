@@ -21,9 +21,10 @@ import { CachedKeymap, cacheRead, cacheWrite } from "./keymap/cache";
 import { syncKeymap } from "./keymap/sync";
 import { FloatBoard } from "./keyboard/FloatBoard";
 import { KeyLayout } from "./keyboard/legends";
+import { DiagPanel } from "./DiagPanel";
 
 type ConnState = "disconnected" | "scanning" | "connecting" | "connected";
-type View = "board" | "debug";
+type View = "board" | "debug" | "diag";
 
 const MAX_LOG = 50;
 
@@ -347,9 +348,16 @@ export function App() {
         <button
           className="ghost-btn"
           title="表示切替"
-          onClick={() => setView((v) => (v === "board" ? "debug" : "board"))}
+          onClick={() => setView((v) => (v === "debug" ? "board" : "debug"))}
         >
-          {view === "board" ? "ログ" : "ボード"}
+          {view === "debug" ? "ボード" : "ログ"}
+        </button>
+        <button
+          className={`ghost-btn${view === "diag" ? " ghost-btn-active" : ""}`}
+          title="診断モード"
+          onClick={() => setView((v) => (v === "diag" ? "board" : "diag"))}
+        >
+          診断
         </button>
         {conn === "connected" && (
           <>
@@ -510,7 +518,9 @@ export function App() {
       )}
 
       <main className="body">
-        {view === "debug" ? (
+        {view === "diag" ? (
+          <DiagPanel connected={conn === "connected"} />
+        ) : view === "debug" ? (
           <DebugLog log={log} layer={layer} />
         ) : cache ? (
           <FloatBoard

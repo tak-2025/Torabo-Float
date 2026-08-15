@@ -135,6 +135,9 @@ pub async fn gatt_connect(
                         if let Some(task) = state.live_feed_task.lock().await.take() {
                             task.abort();
                         }
+                        if let Some(task) = state.diag_task.lock().await.take() {
+                            task.abort();
+                        }
                         *state.conn.lock().await = None;
                         *state.device.lock().await = None;
 
@@ -162,6 +165,9 @@ pub async fn gatt_connect(
 
             let state = ah3.state::<super::commands::ActiveConnection>();
             if let Some(task) = state.live_feed_task.lock().await.take() {
+                task.abort();
+            }
+            if let Some(task) = state.diag_task.lock().await.take() {
                 task.abort();
             }
             *state.conn.lock().await = None;

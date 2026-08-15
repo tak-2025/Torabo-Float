@@ -6,6 +6,7 @@ use futures::lock::Mutex;
 mod transport;
 use transport::cache::{cache_read, cache_write};
 use transport::commands::{transport_close, transport_send_data, ActiveConnection};
+use transport::diag::{diag_read_snapshot, diag_set_streaming, diag_subscribe};
 use transport::gatt::{gatt_connect, gatt_list_devices};
 use transport::live_feed::{live_feed_read_snapshot, live_feed_subscribe};
 
@@ -15,6 +16,7 @@ fn main() {
             conn: Mutex::new(None),
             device: Mutex::new(None),
             live_feed_task: Mutex::new(None),
+            diag_task: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             transport_send_data,
@@ -23,6 +25,9 @@ fn main() {
             gatt_connect,
             live_feed_subscribe,
             live_feed_read_snapshot,
+            diag_subscribe,
+            diag_read_snapshot,
+            diag_set_streaming,
             cache_read,
             cache_write,
         ])
