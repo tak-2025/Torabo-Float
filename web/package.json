@@ -1,0 +1,28 @@
+{
+  "name": "torabo-float-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:single": "tsc && vite build --config vite.config.singlefile.ts",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zmkfirmware/zmk-studio-ts-client": "^0.0.18",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@types/web-bluetooth": "^0.0.20",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "run-script-os": "^1.1.6",
+    "typescript": "^5.4.5",
+    "vite": "^5.4.8",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}

@@ -8,6 +8,9 @@ Windows 常駐アプリです（Tauri v2 + React）。配信・操作説明の�
 
 > ⚠️ 本プロジェクトは ZMK Project とは **提携・承認関係にありません**。
 > torabo-tsuki（[sekigon-gonnoc](https://github.com/sekigon-gonnoc) 氏設計）向けの非公式ツールです。
+>
+> 💡 **インストールせずに試せる [Web 版](#web-版)があります** →
+> <https://tak-2025.github.io/Torabo-Float/>（Chrome / Edge のデスクトップ版）
 
 ---
 
@@ -72,6 +75,17 @@ npm run tauri build
 
 Rust ツールチェーンと Node.js が必要です。
 
+Web 版は `web/` に独立した npm プロジェクトとして入っています（Rust 不要）。
+
+```bash
+cd web
+npm ci --ignore-scripts   # postinstall は失敗するので必ず付ける（web/README.md 参照）
+
+npm run dev               # 開発サーバー（http://localhost:5178）
+npm run build             # dist/ — Pages で配信するサイト
+npm run build:single      # dist-single/index.html — 単一 HTML（ダウンロード用）
+```
+
 ---
 
 ## 使い方（現状）
@@ -83,6 +97,43 @@ Rust ツールチェーンと Node.js が必要です。
    - **押下** 行に、いま押しているキーの position 番号
    - イベントログ（KEY / LAYER / SNAPSHOT の受信履歴）
 4. ウィンドウはヘッダ部分をドラッグして移動、右上の **×** で終了します。
+
+---
+
+## Web 版
+
+同じ盤面表示を**ブラウザで**動かす実装が [`web/`](web/) にあります（Web Bluetooth 使用）。
+デスクトップ版とソース（live_feed デコーダ・盤面描画・キャッシュ形式・スタイルシート）を
+共有していて、ネイティブ BLE（Rust / `bluest`）の部分だけが Web Bluetooth に差し替わっています。
+
+| 用途 | URL |
+|---|---|
+| サイト | <https://tak-2025.github.io/Torabo-Float/> |
+| OBS のブラウザソース | <https://tak-2025.github.io/Torabo-Float/?chrome=0> |
+| 単一 HTML | <https://tak-2025.github.io/Torabo-Float/torabo-float-web.html> |
+
+### ダウンロードしてローカルで使えます
+
+サイト全体を **HTML ファイル 1 枚**に固めたビルドを同じ場所に置いてあります。
+JS も CSS も中に埋め込んであるので、上の「単一 HTML」を**落としてダブルクリックするだけ**で、
+サイトと同じものがそのまま動きます。**サーバも Node.js もインストールも不要**です。
+
+`file://` のまま Web Bluetooth でキーボードとペアリングし、GATT 接続してライブ表示するところまで
+**実機の Chrome で動作確認済み**です（2026-08-09）。外部への通信は発生せず、`localStorage` も
+機能するのでキーマップは一度読み込めば次回以降そのまま使えます。帰属表記（NOTICE）は
+ファイル内に埋め込み済みなので、**この 1 枚をそのまま人に渡せます**。
+
+### デスクトップ版との違い
+
+| | デスクトップ版 | Web 版 |
+|---|---|---|
+| インストール | 必要 | 不要（URL / HTML 1 枚） |
+| BLE | ネイティブ（`bluest`） | Web Bluetooth（Chrome / Edge のみ） |
+| 背景の透過・最前面 | ✅ ネイティブウィンドウ | OBS のブラウザソース、または Document PiP（不透明） |
+| 再接続 | 自動 | ページを開くたびにデバイス選択が必要 |
+
+公開は [`.github/workflows/pages.yml`](.github/workflows/pages.yml) が `web/` への push で
+自動実行します。セットアップ・OBS 設定・既知の制約は [`web/README.md`](web/README.md) を参照してください。
 
 ---
 

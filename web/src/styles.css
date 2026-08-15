@@ -1,0 +1,1142 @@
+/* Windows transparency is a hard cutout: pixels are fully transparent or fully
+   opaque, no soft shadows / partial alpha (unverified on this machine either
+   way). Design goal: a pale, airy, floating look where keycaps sit directly on
+   the transparent desktop, with a handful of small translucent pale pills for
+   chrome. Every rgba() below is chosen so its *fully-opaque* fallback (if the
+   partial alpha gets hard-cutout to 100%) still reads as a clean pastel card —
+   white / pale blue / pale amber — so the UI is acceptable either way. */
+
+:root {
+  color-scheme: light;
+
+  /* --- keycaps --- */
+  --key-bg: rgba(255, 255, 255, 0.78);
+  --key-fg: #4a5568;
+  --key-fg-sub: rgba(74, 85, 104, 0.55);
+  --key-border: rgba(160, 174, 192, 0.45);
+
+  --key-pressed-bg: rgba(165, 216, 255, 0.95);
+  --key-pressed-fg: #1a365d;
+  --key-pressed-border: rgba(122, 184, 255, 0.9);
+  --key-pressed-shadow: 0 2px 6px rgba(30, 90, 160, 0.25),
+    0 0 0 2px rgba(165, 216, 255, 0.65);
+
+  /* --- header / badge / settings pills --- */
+  --pill-bg: rgba(255, 255, 255, 0.66);
+  --pill-fg: #4a5568;
+  --pill-border: rgba(160, 174, 192, 0.4);
+
+  /* --- resync banner (pale amber) --- */
+  --banner-bg: rgba(255, 231, 179, 0.75);
+  --banner-fg: #7a4a00;
+  --banner-border: rgba(224, 184, 110, 0.65);
+  --banner-btn-bg: rgba(255, 244, 219, 0.85);
+
+  /* --- error pill (pale rose) --- */
+  --error-bg: rgba(255, 226, 226, 0.78);
+  --error-border: rgba(224, 140, 140, 0.55);
+  --error-fg: #a13a3a;
+
+  /* --- debug log panel: readable regardless of --ui-alpha --- */
+  --log-bg: rgba(255, 255, 255, 0.72);
+  --log-fg: #3a4250;
+  --log-border: rgba(160, 174, 192, 0.4);
+
+  --muted: #8b95a5;
+
+  --status-connected: #34c777;
+  --status-busy: #e0ac2e;
+  --status-off: #e0605a;
+
+  /* Global opacity multiplier for the header/board/pill chrome. Set on
+     document.documentElement by the ⚙ settings slider (persisted to
+     localStorage). Text stays legible because it dims uniformly with its
+     pill/keycap background rather than fading independently. */
+  --ui-alpha: 1;
+}
+
+/* --- selectable color themes ---------------------------------------------
+   "pale" (default) is the base :root palette above and has no override
+   block. Every other theme id overrides ONLY the key/pill variable groups
+   (background, foreground, border, pressed state, sub-legend dim color) —
+   banner/error/log/status/--ui-alpha stay global regardless of theme. Set
+   via document.documentElement.dataset.theme by the ⚙ settings row. */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --key-bg: rgba(38, 42, 51, 0.82);
+  --key-fg: #e2e8f0;
+  --key-fg-sub: rgba(226, 232, 240, 0.55);
+  --key-border: rgba(255, 255, 255, 0.14);
+
+  --key-pressed-bg: rgba(56, 189, 248, 0.92);
+  --key-pressed-fg: #082f49;
+  --key-pressed-border: rgba(56, 189, 248, 0.9);
+  --key-pressed-shadow: 0 2px 6px rgba(8, 47, 73, 0.35),
+    0 0 0 2px rgba(56, 189, 248, 0.55);
+
+  --pill-bg: rgba(30, 33, 40, 0.7);
+  --pill-fg: #cbd5e1;
+  --pill-border: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="sakura"] {
+  --key-bg: rgba(255, 241, 245, 0.85);
+  --key-fg: #9d4468;
+  --key-fg-sub: rgba(157, 68, 104, 0.55);
+  --key-border: rgba(244, 194, 212, 0.6);
+
+  --key-pressed-bg: rgba(250, 162, 193, 0.95);
+  --key-pressed-fg: #5c1a35;
+  --key-pressed-border: rgba(250, 162, 193, 0.9);
+  --key-pressed-shadow: 0 2px 6px rgba(157, 68, 104, 0.25),
+    0 0 0 2px rgba(250, 162, 193, 0.55);
+
+  --pill-bg: rgba(255, 232, 239, 0.7);
+  --pill-fg: #9d4468;
+  --pill-border: rgba(244, 194, 212, 0.5);
+}
+
+[data-theme="mint"] {
+  --key-bg: rgba(236, 253, 245, 0.85);
+  --key-fg: #256d54;
+  --key-fg-sub: rgba(37, 109, 84, 0.55);
+  --key-border: rgba(167, 224, 196, 0.6);
+
+  --key-pressed-bg: rgba(110, 231, 183, 0.95);
+  --key-pressed-fg: #064e3b;
+  --key-pressed-border: rgba(110, 231, 183, 0.9);
+  --key-pressed-shadow: 0 2px 6px rgba(6, 78, 59, 0.25),
+    0 0 0 2px rgba(110, 231, 183, 0.55);
+
+  --pill-bg: rgba(230, 250, 240, 0.7);
+  --pill-fg: #256d54;
+  --pill-border: rgba(167, 224, 196, 0.5);
+}
+
+[data-theme="contrast"] {
+  color-scheme: dark;
+
+  --key-bg: rgba(24, 24, 27, 0.92);
+  --key-fg: #fafafa;
+  --key-fg-sub: rgba(250, 250, 250, 0.62);
+  --key-border: rgba(255, 255, 255, 0.35);
+
+  --key-pressed-bg: #fbbf24;
+  --key-pressed-fg: #1c1917;
+  --key-pressed-border: rgba(251, 191, 36, 0.9);
+  --key-pressed-shadow: 0 2px 6px rgba(28, 25, 23, 0.35),
+    0 0 0 2px rgba(251, 191, 36, 0.55);
+
+  --pill-bg: rgba(24, 24, 27, 0.85);
+  --pill-fg: #fafafa;
+  --pill-border: rgba(255, 255, 255, 0.3);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+}
+
+body {
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--key-fg);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Anything marked as a drag region actually drags the OS window. */
+*[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+/* No card: the app root and body stage are fully transparent. Only pills,
+   keycaps, and the log panel are painted. */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: transparent;
+}
+
+/* --- header pill: the dedicated drag container --- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 6px 4px;
+  padding: 6px 8px;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  opacity: var(--ui-alpha);
+  transition: opacity 120ms linear;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.header .title,
+.layer-name {
+  font-weight: 700;
+  font-size: 12.5px;
+  color: var(--key-fg);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conn-status {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+/* Interactive elements must NOT be draggable, or clicks turn into drags. */
+button,
+select,
+input,
+.ghost-btn,
+.link {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* Small ghost icon/text buttons used in the header + settings row. */
+.ghost-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--pill-fg);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 3px 7px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 120ms linear, border-color 120ms linear,
+    color 120ms linear;
+}
+.ghost-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.55);
+  border-color: var(--key-border);
+}
+.ghost-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ghost-btn-active {
+  background: rgba(165, 216, 255, 0.45);
+  border-color: rgba(122, 184, 255, 0.6);
+}
+.ghost-btn.close {
+  font-size: 14px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+.ghost-btn.close:hover {
+  background: var(--error-bg);
+  color: var(--error-fg);
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 6px 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- settings row pill (⚙ toggle) --- */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px 4px;
+  padding: 5px 10px;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 12px;
+  color: var(--pill-fg);
+  font-size: 11px;
+  opacity: var(--ui-alpha);
+}
+.settings-row .settings-label {
+  white-space: nowrap;
+  color: var(--muted);
+}
+.settings-row input[type="range"] {
+  flex: 1 1 auto;
+  accent-color: #7ab8ff;
+}
+.settings-row .settings-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  min-width: 3.2ch;
+  text-align: right;
+}
+.settings-row .seg {
+  display: inline-flex;
+  gap: 2px;
+}
+.settings-row .seg-btn {
+  padding: 2px 8px;
+  font-size: 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid var(--key-border);
+  color: var(--pill-fg);
+  cursor: pointer;
+}
+.settings-row .seg-btn.seg-on {
+  background: #7ab8ff;
+  color: #08243f;
+  border-color: #7ab8ff;
+}
+.settings-row .swatches {
+  display: inline-flex;
+  gap: 4px;
+}
+/* Small round theme-preview buttons: a wedge of the theme's keycap color
+   with the pressed-state accent as the ring/inner dot, so the swatch itself
+   previews the palette instead of relying on a text label. */
+.settings-row .swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: var(--swatch-bg);
+  border: 1px solid var(--key-border);
+  box-shadow: inset 0 0 0 3px var(--swatch-accent);
+}
+.settings-row .swatch-on {
+  box-shadow: inset 0 0 0 3px var(--swatch-accent), 0 0 0 2px #fff,
+    0 0 0 3px var(--swatch-accent);
+}
+
+button,
+select {
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--pill-fg);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--key-border);
+  border-radius: 7px;
+  padding: 4px 9px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.85);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.link {
+  background: transparent;
+  border: none;
+  color: var(--key-fg);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+/* --- connect / scan pill (pre-connection view) --- */
+.controls {
+  margin: 0 6px 4px;
+  padding: 6px 8px;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 12px;
+  opacity: var(--ui-alpha);
+}
+.row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.error {
+  margin: 0 6px 4px;
+  padding: 5px 10px;
+  background: var(--error-bg);
+  border: 1px solid var(--error-border);
+  border-radius: 10px;
+  color: var(--error-fg);
+  font-size: 11.5px;
+  word-break: break-word;
+}
+
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.layerbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.badge {
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  color: var(--pill-fg);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* Debug log panel: kept a readable translucent light panel (dev tool), NOT
+   dimmed by --ui-alpha so it stays legible regardless of the opacity slider. */
+.logwrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--log-bg);
+  border: 1px solid var(--log-border);
+  border-radius: 8px;
+  padding: 4px 6px;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.logline {
+  white-space: nowrap;
+  color: var(--log-fg);
+}
+
+/* --- staleness banner (non-blocking, always full opacity — a warning
+   shouldn't dim with the rest of the chrome) --- */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px 4px;
+  padding: 5px 10px;
+  background: var(--banner-bg);
+  border: 1px solid var(--banner-border);
+  border-radius: 10px;
+  color: var(--banner-fg);
+  font-size: 11px;
+}
+.banner-btn {
+  margin-left: auto;
+  background: var(--banner-btn-bg);
+  border: 1px solid var(--banner-border);
+  color: var(--banner-fg);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.empty-pill {
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 14px;
+  padding: 10px 16px;
+  line-height: 1.6;
+  font-size: 12px;
+}
+
+/* --- diagnostics panel (診断モード) — a readable translucent tool panel,
+   like the debug log it is NOT dimmed by --ui-alpha so it stays legible. --- */
+.diag {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.diag-note {
+  background: var(--log-bg);
+  border: 1px solid var(--log-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  text-align: center;
+}
+.diag-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.diag-row {
+  background: var(--log-bg);
+  border: 1px solid var(--log-border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  color: var(--log-fg);
+}
+.diag-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.diag-label {
+  font-weight: 700;
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diag-chip {
+  margin-left: auto;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.diag-chip-ok {
+  background: rgba(52, 199, 119, 0.16);
+  border-color: rgba(52, 199, 119, 0.5);
+}
+.diag-chip-idle {
+  background: rgba(224, 172, 46, 0.16);
+  border-color: rgba(224, 172, 46, 0.5);
+}
+.diag-chip-fail {
+  background: rgba(224, 96, 90, 0.16);
+  border-color: rgba(224, 96, 90, 0.5);
+}
+.diag-chip-absent {
+  background: rgba(139, 149, 165, 0.14);
+  border-color: rgba(139, 149, 165, 0.4);
+  color: var(--muted);
+}
+.diag-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.diag-badge {
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  color: var(--pill-fg);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.diag-badge-err {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error-fg);
+}
+.diag-row-enc {
+  margin-top: 4px;
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--log-fg);
+}
+
+/* --- FloatBoard --- */
+.floatboard {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  opacity: var(--ui-alpha);
+  transition: opacity 120ms linear;
+}
+.floatboard-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 2px 6px;
+}
+.floatboard-layer {
+  font-weight: 700;
+  font-size: 10.5px;
+  color: var(--pill-fg);
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  letter-spacing: 0.02em;
+}
+/* Auto-scale stage: PhysicalLayout measures this parent and scales to fit. */
+.floatboard-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* --- keyboard rendering (plain CSS port of Key/PhysicalLayout) ---
+   .phys-layout is the flex item and is sized to the *scaled* board box so the
+   stage's flex centering lands it exactly; the transform lives on the inner
+   .phys-layout-content (origin top-left). See PhysicalLayout.tsx. */
+.phys-layout-content {
+  transform-origin: top left;
+}
+
+.key {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: var(--key-bg);
+  border: 1px solid var(--key-border);
+  color: var(--key-fg);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: background 120ms ease, color 120ms ease,
+    box-shadow 120ms ease, border-color 120ms ease;
+}
+.key-pressed {
+  background: var(--key-pressed-bg);
+  color: var(--key-pressed-fg);
+  border-color: var(--key-pressed-border);
+  box-shadow: var(--key-pressed-shadow);
+}
+.key-header {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 500;
+  opacity: 0.7;
+  white-space: nowrap;
+  color: inherit;
+}
+.key-body {
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+.hid-label {
+  display: inline-block;
+}
+
+/* --- two-tier keycap face (layout-aware legends) --- */
+.key-face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.key-face-sub {
+  font-size: 8px;
+  font-weight: 500;
+  color: var(--key-fg-sub);
+  margin-bottom: 1px;
+}
+.key-face-main {
+  position: relative;
+  font-size: 13px;
+  font-weight: 600;
+}
+.key-face-shift {
+  font-size: 6px;
+  opacity: 0.65;
+  margin-left: 1px;
+  vertical-align: super;
+}
+
+/* ==========================================================================
+   Web build additions (everything above this line is copied from Torabo-Float
+   so the two stay diffable). Only NEW rules and browser-specific overrides go
+   here.
+   ========================================================================== */
+
+/* The transparency contract for OBS: no element in the chain from the browser
+   canvas down to the board may paint an opaque background. OBS' browser source
+   composites whatever alpha the page leaves, so a single opaque ancestor would
+   turn the overlay into a rectangle. Only pills, keycaps and panels paint. */
+html,
+body,
+#root,
+.app {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Desktop Float dragged the OS window by these; in a browser the property does
+   nothing, but the rule is neutralised so it can never affect hit-testing. */
+*[data-tauri-drag-region] {
+  -webkit-app-region: initial;
+  app-region: initial;
+}
+
+/* Board-only overlay (?chrome=0 / the "h" toggle). */
+.app-bare {
+  padding: 0;
+}
+.app-bare .body {
+  padding: 0;
+}
+
+/* Invisible until hovered: brings the chrome back without a reload (which
+   would drop the Web Bluetooth grant and need a fresh user gesture). */
+.chrome-handle {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 0 0 8px 0;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 120ms linear;
+  z-index: 10;
+}
+.chrome-handle:hover,
+.chrome-handle:focus-visible {
+  opacity: 1;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+}
+
+/* --- connection onboarding card ------------------------------------------ */
+.guide {
+  margin: 0 6px 4px;
+  padding: 8px 12px;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 12px;
+  color: var(--pill-fg);
+  font-size: 11.5px;
+  line-height: 1.7;
+  opacity: var(--ui-alpha);
+}
+.guide-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.guide-head strong {
+  font-size: 12px;
+}
+.guide-head .ghost-btn {
+  margin-left: auto;
+}
+.guide-steps {
+  margin: 0 0 8px;
+  padding-left: 1.4em;
+}
+.guide-steps li {
+  margin-bottom: 4px;
+}
+.guide-steps code {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  font-size: 10.5px;
+  background: rgba(127, 127, 127, 0.16);
+  border-radius: 4px;
+  padding: 0 3px;
+}
+.guide .row {
+  gap: 8px;
+}
+
+/* --- inline notices (non-fatal: RPC unavailable, URL-locked settings, …) --- */
+.note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 6px 4px;
+  padding: 5px 10px;
+  background: var(--log-bg);
+  border: 1px solid var(--log-border);
+  border-radius: 10px;
+  color: var(--log-fg);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.note-warn {
+  background: var(--banner-bg);
+  border-color: var(--banner-border);
+  color: var(--banner-fg);
+}
+.note-warn .banner-btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+/* --- sync progress. A keymap fetch over the ZMK RPC characteristic (INDICATE,
+   ~20 bytes per confirmed round trip) can run for tens of seconds; a moving
+   spinner plus the current stage is what separates "slow" from "hung". --- */
+.note-busy .muted {
+  margin-left: auto;
+  text-align: right;
+}
+.spinner {
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.75;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Keymap actions offered directly in the "no keymap yet" placeholder, so the
+   primary route (import) does not hide behind the ⚙ menu. */
+.empty-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.hidden-file {
+  display: none;
+}
+
+.settings-value.wide {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* --- landing page ---------------------------------------------------------
+   The explanation page shown at `/` (never in ?chrome=0). It is the only view
+   that deliberately paints large surfaces: it is read in a normal browser
+   window, never composited by OBS, and it is what a first-time visitor sees.
+   Text panels use the same pill palette as the chrome so themes carry over. */
+.landing {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 2px 24px;
+  line-height: 1.8;
+  font-size: 12.5px;
+  color: var(--key-fg);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.landing > * {
+  max-width: 780px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.lp-hero {
+  padding: 4px 4px 10px;
+}
+.lp-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  letter-spacing: 0.01em;
+}
+.lp-lead {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+}
+.lp-sub {
+  margin: 0;
+  font-size: 11.5px;
+}
+
+.lp-section {
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  background: var(--pill-bg);
+  border: 1px solid var(--pill-border);
+  border-radius: 14px;
+}
+.lp-h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+/* Step chip in the section heading — the page is a 1-2-3, not a wall. */
+.lp-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--key-pressed-bg);
+  color: var(--key-pressed-fg);
+  border: 1px solid var(--key-pressed-border);
+  font-size: 11px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.lp-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+.lp-steps {
+  margin: 0 0 10px;
+  padding-left: 1.5em;
+}
+.lp-steps li {
+  margin-bottom: 6px;
+}
+.lp-steps .muted,
+.lp-card-body .muted {
+  display: block;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.lp-limits {
+  margin: 0;
+  padding-left: 1.3em;
+  font-size: 12px;
+}
+.lp-limits li {
+  margin-bottom: 6px;
+}
+/* A list used *inside* a card: smaller, and it must not push the card's button
+   off the bottom of a narrow column. */
+.lp-tight {
+  flex: 1 1 auto;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+/* File paths are long and unbreakable; wrap rather than widen the card. */
+.lp-inline-code {
+  overflow-wrap: anywhere;
+}
+
+.landing code,
+.lp-code {
+  font-family: "Cascadia Code", "Consolas", monospace;
+  background: rgba(127, 127, 127, 0.16);
+  border-radius: 4px;
+}
+.landing code {
+  font-size: 11px;
+  padding: 0 4px;
+}
+.lp-code {
+  display: block;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.lp-notice {
+  max-height: 260px;
+  overflow-y: auto;
+}
+.lp-details summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+.landing kbd {
+  font-family: inherit;
+  font-size: 11px;
+  border: 1px solid var(--key-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  background: var(--key-bg);
+}
+
+.lp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.lp-primary {
+  font-weight: 700;
+  background: var(--key-pressed-bg);
+  color: var(--key-pressed-fg);
+  border: 1px solid var(--key-pressed-border);
+  border-radius: 8px;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+.lp-primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* The download control is an <a download>, not a <button>: it needs the box
+   model and the link-color reset that .lp-primary assumes on a button. */
+.lp-dl {
+  display: inline-block;
+  text-decoration: none;
+  color: var(--key-pressed-fg);
+}
+.lp-dl:hover {
+  text-decoration: none;
+}
+
+/* Three launch modes, side by side so the trade-off is visible at a glance. */
+.lp-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.lp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--key-border);
+  border-radius: 12px;
+  background: var(--key-bg);
+}
+.lp-card-hero {
+  border-color: var(--key-pressed-border);
+  box-shadow: var(--key-pressed-shadow);
+}
+.lp-card-title {
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.lp-card-body {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+.lp-card button {
+  align-self: flex-start;
+}
+.lp-badge {
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: var(--key-pressed-bg);
+  color: var(--key-pressed-fg);
+  border: 1px solid var(--key-pressed-border);
+}
+.lp-warn {
+  margin: 6px 0 0;
+  padding: 5px 10px;
+  background: var(--banner-bg);
+  border: 1px solid var(--banner-border);
+  border-radius: 8px;
+  color: var(--banner-fg);
+  font-size: 11.5px;
+}
+
+.lp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.lp-table th,
+.lp-table td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--key-border);
+  vertical-align: top;
+}
+.lp-table th {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lp-foot {
+  padding: 0 4px;
+  font-size: 11px;
+}
+
+/* --- Document Picture-in-Picture window -----------------------------------
+   A PiP window floats over arbitrary desktop content and, unlike OBS, cannot
+   composite page alpha — so this is the ONE place the transparency contract is
+   deliberately overridden with an opaque, theme-derived backdrop. Set on the
+   PiP document's <body> by pip.ts; the class selector outranks the `body`
+   element selector in the copied `background: transparent !important` rule. */
+:root {
+  --pip-bg: #eef2f7;
+}
+[data-theme="dark"] {
+  --pip-bg: #12151b;
+}
+[data-theme="sakura"] {
+  --pip-bg: #fff3f7;
+}
+[data-theme="mint"] {
+  --pip-bg: #eefbf4;
+}
+[data-theme="contrast"] {
+  --pip-bg: #000000;
+}
+.pip-root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--pip-bg) !important;
+}
