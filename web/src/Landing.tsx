@@ -147,7 +147,8 @@ export function Landing({
                 <strong>Torabo Studio と同時には使えません。</strong>
                 シリアルポートは OS が 1 つのアプリにだけ渡すため、
                 こちらが接続している間は Torabo Studio が USB でつなげません
-                （逆も同じ）。並行して使いたいときは BLE を選んでください。
+                （逆も同じ）。BLE でも 2 つのアプリの同時接続はできないため、
+                切り替えるときは片方を閉じてください。
               </li>
               <li>
                 <strong>Chrome / Edge のデスクトップ版のみ</strong>（Web Serial）。
@@ -525,9 +526,10 @@ export function Landing({
             自動再接続はできません。リロードせずに使い続けるのが前提です。
           </li>
           <li>
-            <strong>USB は Torabo Studio と排他です。</strong>
-            シリアルポートは OS が 1 つのアプリにだけ渡します。両方を同時に
-            使いたいときは、どちらかを BLE でつないでください。
+            <strong>Torabo Studio とは排他です。</strong>
+            シリアルポートは OS が 1 つのアプリにだけ渡し、BLE でも
+            2 つのアプリの同時接続はできません。片方を閉じてから
+            接続してください。
           </li>
           <li>
             <strong>USB にはトンネル対応ファームウェアが必要です。</strong>

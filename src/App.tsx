@@ -580,7 +580,8 @@ export function App() {
               USB ケーブルで直結します。ペアリング不要ですが、
               <strong>接続中は torabo-studio など他のアプリが同じ COM ポートを開けません</strong>
               （OS がポートを 1 つのアプリに占有させるため）。
-              同時に使いたいときは BLE を選んでください。
+              BLE でも torabo-studio との同時利用はできないため、
+              切り替えるときは片方を閉じてください。
             </div>
           )}
         </div>
