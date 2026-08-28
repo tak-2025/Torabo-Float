@@ -1,0 +1,67 @@
+<!doctype html>
+<!--
+  Torabo-Float-Web
+  Copyright 2026 tak-2025
+  Licensed under the Apache License, Version 2.0 (the "License").
+  Full license text: https://www.apache.org/licenses/LICENSE-2.0
+  Source / issues: https://github.com/tak-2025/Torabo-Float (web/ directory)
+
+  This file is a single-file production build of Torabo-Float-Web. It embeds
+  all JS/CSS/JSON assets as data: URIs so it can be opened directly via
+  file:// with no server. If you received only this HTML file, this comment
+  and the NOTICE text below satisfy the Apache-2.0 attribution requirement
+  (License section 4(d)) for redistributing it as-is.
+
+  ------------------------------ NOTICE (full text) ------------------------------
+  ZMK Studio
+  Copyright 2024 The ZMK Contributors
+
+  This product includes software developed by the ZMK Project (https://zmk.dev/),
+  licensed under the Apache License, Version 2.0 (the "License").
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+  --------------------------------------------------------------------------------
+
+  Torabo-Float
+  Copyright 2026 tak-2025
+
+  This product includes code adapted from ZMK Studio and from Torabo-Studio (an
+  unofficial ZMK Studio fork), both licensed under the Apache License, Version 2.0.
+  The adapted code includes the keyboard rendering (Key / PhysicalLayout /
+  HidUsageLabel / hid-usages) and the ZMK Studio RPC client wiring.
+
+  --------------------------------------------------------------------------------
+
+  Torabo-Float-Web
+  Copyright 2026 tak-2025
+
+  This product is the browser build of Torabo-Float and reuses that project's
+  source directly: the live_feed decoder, the keyboard rendering, the keymap sync
+  and cache schema, and the stylesheet. The native (Tauri / Rust `bluest`) BLE
+  transport is replaced by a Web Bluetooth implementation written for this
+  project.
+
+  Torabo-Float-Web is an unofficial companion tool for the torabo-tsuki keyboard.
+  It is not affiliated with or endorsed by the ZMK Project. It is distributed
+  under the same Apache License, Version 2.0.
+  ----------------------------------------------------------------------------
+-->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Torabo Float Web</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

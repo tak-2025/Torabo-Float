@@ -1,0 +1,96 @@
+name: pages
+
+# Builds web/ (the browser build of Torabo Float) and publishes it to GitHub
+# Pages at https://tak-2025.github.io/Torabo-Float/.
+#
+# Two artifacts come out of the same source tree and both are published:
+#   dist/                      -> the site itself (Pages root)
+#   dist-single/index.html     -> copied to /torabo-float-web.html, the
+#                                 "download one file and open it" build that
+#                                 Landing.tsx links to. Keeping it inside the
+#                                 Pages payload (rather than a Release) means
+#                                 the download can never lag behind the site.
+#
+# The desktop (Tauri) app in src/ + src-tauri/ is not built here.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two Pages deploys race. Queue instead of cancelling, so a deploy
+# that is already uploading isn't left half-applied.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # @zmkfirmware/zmk-studio-ts-client's postinstall shells out to
+      # `run-script-os`, which isn't available (it's a devDependency of that
+      # package, not something npm installs for a consumer) — the script fails
+      # on every platform, not just Windows. It's safe to skip: the package
+      # ships prebuilt output under lib/, so nothing needs building.
+      # esbuild/rollup/@swc's native binaries are NOT affected by
+      # --ignore-scripts: npm still installs the correct platform package via
+      # optionalDependencies, and each tool's JS entry point requires that
+      # package directly at runtime (postinstall is only a legacy fallback).
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build site
+        run: npm run build
+
+      - name: Build single-file download
+        run: npm run build:single
+
+      # Named for the user, not for the build: people are told to download
+      # "torabo-float-web.html", and a file called index.html would be
+      # indistinguishable from every other download in their folder.
+      - name: Stage single-file download into the site
+        run: cp dist-single/index.html dist/torabo-float-web.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
