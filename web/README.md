@@ -1,14 +1,15 @@
-# Torabo-Float-Web
+# Torabo Float — Web 版
 
 **ブラウザで動く、torabo-tsuki の「いま押しているキー / アクティブレイヤー」ライブ表示。**
 
-[Torabo-Float](..)（Tauri 製 Windows 常駐アプリ）の **Web 版**です。
+[Torabo-Float](https://github.com/tak-2025/Torabo-Float)（Tauri 製の透過フロートウィンドウアプリ）の **Web 版**です。
 インストール不要で、**URL を渡すだけで他の人にも使ってもらえます**。背景が完全透過なので、
 **OBS のブラウザソース**にそのまま入れて配信オーバーレイにできます。
 
 > このディレクトリは元々 `tak-2025/Torabo-Float-Web` という独立リポジトリでしたが、
 > デスクトップ版と同じソース（live_feed デコーダ・盤面描画・キャッシュ形式・
 > スタイルシート）を共有しているため、Torabo-Float の `web/` に統合しました。
+> 旧リポジトリはアーカイブ済みです。
 
 ## 公開 URL / ダウンロード
 
@@ -28,13 +29,17 @@
 
 ## できること
 
+- **USB 接続**（Web Serial。`torabo-rpc-tunnel` 対応 FW が必要）— BLE のプロファイル切替が不要で、
+  キーマップの RPC 同期も高速
+- BLE 接続（Web Bluetooth）
 - キー押下のライブハイライト（物理レイアウト上）
 - アクティブレイヤーの追従表示（レイヤー名 + レイヤーに応じた刻印切替）
 - 盤面の表示方法を 3 種類から選択（このページ / 最小ウィンドウ / **常に最前面**）
 - テーマ5種 / JIS・US 刻印切替 / 表示サイズ / 不透明度
 - キーマップの JSON インポート・エクスポート（Torabo Float キャッシュ / Torabo Studio
-  バックアップの両形式に対応。**これが主経路**）と、補助としての RPC 自動同期
-- 診断パネル（af02 対応 FW のみ）
+  バックアップの両形式に対応）と、RPC 自動同期（USB 接続時は主経路。BLE 接続時は
+  補助で、失敗しうるので JSON インポートが確実）
+- 診断パネル（BLE は af02 キャラクタリスティック、USB は tunnel の EVT_DIAG 経由）
 
 トップページは**説明ページ**です。接続手順・表示方法・OBS の設定がそこに全部あります
 （`?chrome=0` のときだけは説明を出さず、いきなり盤面になります = OBS 用）。
@@ -45,14 +50,24 @@
 
 | 項目 | 内容 |
 |---|---|
-| ブラウザ | **Chrome / Edge のデスクトップ版**（Web Bluetooth 必須） |
+| ブラウザ | **Chrome / Edge のデスクトップ版**（無線は Web Bluetooth、USB は Web Serial が必須） |
 | 非対応 | **iOS / iPadOS の Safari**、Firefox、Safari (macOS) |
-| キーボード | `torabo-tsuki_ext_FW` の `torabo-live-feed` スニペット入り FW |
-| 配信 | HTTPS または `localhost`（Web Bluetooth はセキュアコンテキスト必須） |
+| キーボード | `torabo-tsuki_ext_FW` の `torabo-live-feed` スニペット入り FW。USB で使う場合は `torabo-rpc-tunnel` スニペットも必要 |
+| 配信 | HTTPS または `localhost`（Web Bluetooth / Web Serial はセキュアコンテキスト必須） |
 
 ---
 
-## 接続手順（重要・非自明）
+## 接続手順
+
+### USB で使う場合（かんたん）
+
+キーボードを USB ケーブルで PC につなぎ、説明ページの **「USB で接続」** を押して
+ブラウザのダイアログでシリアルポートを選ぶだけです。BLE のプロファイル切り替えは不要で、
+プロファイルの枠も消費しません。ただし `torabo-rpc-tunnel` 対応ファームウェアが必要です
+（未対応の場合は「UNSUPPORTED_FEATURE」と表示されるので BLE で接続してください）。
+また Torabo Studio とは排他（同じ COM ポートを OS が 1 つのアプリにしか渡さない）です。
+
+### 無線（BLE）で使いたい場合（重要・非自明）
 
 ブラウザのデバイス選択ダイアログには「**いま advertising しているデバイス**」しか出てきません。
 ZMK のキーボードは**接続済みのプロファイルでは advertising しない**ため、次の順番が必要です。
@@ -60,13 +75,13 @@ ZMK のキーボードは**接続済みのプロファイルでは advertising �
 1. **キーボードを空き BLE プロファイルに切り替える**
    （ZMK なら未使用プロファイルを選ぶキー。torabo-tsuki の既定ではレイヤー3 の `&bt BT_SEL 0…4`。
    機種・キーマップにより異なります）
-2. アプリの **「接続」** ボタン → ブラウザのダイアログでキーボードを選ぶ
+2. アプリの **「BLE で接続」** ボタン → ブラウザのダイアログでキーボードを選ぶ
 3. 接続できたら、**キーボードを元のプロファイル（普段使っている PC）に戻す**
    → キー入力は本来の PC に流れ、こちらにはフィードだけが届きます
 
 この3ステップは説明ページにも表示されます。
 
-> BLE プロファイルを 1 枠使います。空きがない場合はどれかを解放してください。
+> BLE プロファイルを 1 枠使います。空きがない場合はどれかを解放してください（USB では不要）。
 
 ---
 
@@ -164,10 +179,10 @@ https://<公開先>/?chrome=0&theme=dark&scale=120&legend=jis&opacity=90
 盤面を描くには**物理レイアウト（キーの並び）**と**キーマップ（各キーの割り当て）**が
 必要です。接続（live_feed）はキーの**押下ハイライトとレイヤー表示**にしか使いません。
 
-**JSON インポートが主経路**です。RPC 同期は「通ればラッキー」の補助経路として残して
-あります。
+**USB 接続時は RPC 同期が主経路**です（数秒で終わります）。**BLE 接続時は RPC が遅い/失敗しうる
+ため、JSON インポートが確実な経路**です。どちらの接続方式でも JSON インポートは使えます。
 
-### 経路A: JSON インポート（主経路・確実）
+### 経路A: JSON インポート（確実）
 
 説明ページの「JSON をインポート」、盤面が空のときのボタン、または ⚙ →
 **「JSON インポート」**から読み込みます。**形式は自動判別**され、次の 2 つを受け付けます。
@@ -178,7 +193,7 @@ https://<公開先>/?chrome=0&theme=dark&scale=120&legend=jis&opacity=90
 %APPDATA%\io.github.tak-2025.torabo-float\keymap-cache.json
 ```
 
-デスクトップ版 Torabo-Float が書き出すファイルで、この Web 版の
+デスクトップ版 Torabo Float が書き出すファイルで、この Web 版の
 **「エクスポート」ボタンが出力するファイルと同一形式**です。**そのまま読み込めます。**
 
 トップレベルの構造（`src/keymap/cache.ts` の `CachedKeymap`）:
@@ -222,12 +237,15 @@ Torabo Studio の「バックアップ」パネルが出すファイルです。
 > id の読み替えは不要**です。どの PC で読んでもキー名は正しく出ます。
 > 名前表を持たない v1–v3 のバックアップだけは、id の意味が確定できないため警告が出ます。
 
-### 経路B: RPC 同期（補助・自動）
+### 経路B: RPC 同期（USB では主経路・自動 / BLE では補助）
 
 接続中に ZMK Studio RPC でキーボードから直接取得します。成功すればファイル不要です。
 
-ただし ZMK の RPC 特性は **INDICATE**（`gatt_rpc_transport.c`）で、1 往復あたり
-約 20 バイトしか運べません。キーマップやビヘイビア一覧のような数 KB の応答は
+**USB 接続**の場合、RPC は Web Serial の CDC ストリームをそのまま使うため 20 バイトの
+チャンク制限が無く、**数秒で完了**します。`torabo-rpc-tunnel` 対応 FW なら安定した主経路です。
+
+**BLE 接続**の場合は事情が異なります。ZMK の RPC 特性は **INDICATE**（`gatt_rpc_transport.c`）で、
+1 往復あたり約 20 バイトしか運べません。キーマップやビヘイビア一覧のような数 KB の応答は
 ブラウザ経由だと**数十秒**かかり、環境によっては完了しません
 （`getDeviceInfo` のような小さな応答だけ通る、という症状になります）。
 
@@ -237,7 +255,8 @@ Torabo Studio の「バックアップ」パネルが出すファイルです。
 同期中は進捗（「キーマップを取得中…」「ビヘイビア情報を取得中… 3/28」）が表示されます。
 
 同期が失敗しても致命傷にはなりません。通知が出るだけで、ライブ表示（キー押下・レイヤー）
-はそのまま動きます。
+はそのまま動きます。BLE 接続で確実性を優先するなら、上記「経路A: JSON インポート」を
+使ってください。
 
 ### 保存と配布
 
@@ -253,13 +272,14 @@ Torabo Studio の「バックアップ」パネルが出すファイルです。
 
 ```bash
 npm install
-npm run dev        # http://localhost:5174
+npm run dev        # http://localhost:5178
 npm run build      # dist/ に出力（相対パスなのでサブディレクトリ公開でも動く）
 npm run typecheck
 ```
 
 > `npm install` / `npm ci` は `.npmrc`（`ignore-scripts=true`）により postinstall
-> スクリプトを一切実行しません。理由は下記「Cloudflare Pages への公開」の注記を参照。
+> スクリプトを一切実行しません。理由は下記「既知の落とし穴: postinstall が失敗する」の注記を参照。
+> ルートの `Torabo-Float/README.md` も同じ理由でルート直下に同内容の `.npmrc` を置いています。
 
 ---
 
@@ -273,7 +293,7 @@ HTML に埋め込むので、静的サーバーもビルド環境も不要です
 npm run build:single   # dist-single/index.html を生成（通常の dist/ とは別ディレクトリ）
 ```
 
-`dist-single/index.html`（1 ファイル、目安 350KB 前後）をそのまま USB メモリやチャットで
+`dist-single/index.html`（1 ファイル、400KB 未満）をそのまま USB メモリやチャットで
 渡せば、受け取った側は Chrome / Edge でダブルクリックして開くだけです。`npm run build` /
 `npm run dev` / Cloudflare Pages へのデプロイ（`dist/` を使う経路）には一切影響しません。
 
@@ -287,7 +307,7 @@ npm run build:single   # dist-single/index.html を生成（通常の dist/ と�
 正常動作することを確認済みです。**Node も Python もローカルサーバーも不要**で、
 **HTML ファイル1個を渡すだけ**で使えることが実証されています。
 
-- 単一 HTML（約 347KB）1 個で完結し、外部への通信は発生しません。
+- 単一 HTML（400KB 未満）1 個で完結し、外部への通信は発生しません。
 - `localStorage` も `file://` 上で問題なく機能するため、キーマップは一度読み込めば
   （JSON インポートまたは RPC 同期）、次回以降は再読み込み不要です。
 - 動作確認済みブラウザ: **Chrome / Edge**（デスクトップ版）。
@@ -296,8 +316,8 @@ npm run build:single   # dist-single/index.html を生成（通常の dist/ と�
 ### 参考: 代替手段
 
 環境の事情で `file://` が使えない場合は、`npm run build`（通常ビルド）で `dist/` を作り
-`npx serve dist` 等でローカル配信するか、デスクトップ版 Torabo-Float（Tauri v2、ブラウザや
-Web Bluetooth の制約を受けない）を使う選択肢もあります。
+`npx serve dist` 等でローカル配信するか、デスクトップ版 Torabo Float（Tauri v2、ブラウザや
+Web Bluetooth / Web Serial の制約を受けない）を使う選択肢もあります。
 
 ### 配布するとき
 
@@ -378,19 +398,23 @@ https://tak-2025.github.io/Torabo-Float/?chrome=0
 
 ## 既知の制約
 
-- **Chrome / Edge のデスクトップ版のみ**。iOS / iPadOS Safari と Firefox は Web Bluetooth 非対応。
-- **ページを読み込むたびにデバイス選択が必要**（Web Bluetooth の許可はセッション単位）。
+- **Chrome / Edge のデスクトップ版のみ**。iOS / iPadOS Safari と Firefox は Web Bluetooth / Web Serial 非対応。
+- **ページを読み込むたびにデバイス選択が必要**（Web Bluetooth / Web Serial の許可はセッション単位）。
   **自動再接続はできません。**リロードせずに使い続けるのが前提です。
-- **BLE プロファイルを 1 枠消費**します。
+- **Torabo Studio とは排他です。** シリアルポートは OS が 1 つのアプリにだけ渡し、BLE でも
+  2 つのアプリの同時接続はできません。片方を閉じてから接続してください。
+- **USB 接続には `torabo-rpc-tunnel` 対応ファームウェアが必要です。** 未対応の FW では
+  「UNSUPPORTED_FEATURE」というエラーになります。その場合は BLE で接続してください。
+- **BLE プロファイルを 1 枠消費**します（USB では不要）。
 - **背景の透過は OBS のブラウザソース内だけ**。通常のブラウザウィンドウでも、
-  (c) の最前面（PiP）ウィンドウでも不透明になります。**クリックスルーも不可**、
-  **トレイ常駐も不可**（この 4 点だけがデスクトップ版との機能差です。
-  「常に最前面」は (c) で実現できます）。
-- **OBS のブラウザソース (CEF) で Web Bluetooth が動くかは未検証**です。動かない場合でも、
-  JSON インポートで「静的な盤面」は表示できます。
-- **RPC 同期は保証されません。** ZMK の RPC は BLE の INDICATE（1 往復 ≈ 20 バイト）で
+  (c) の最前面（PiP）ウィンドウでも不透明になります。**クリックスルーも不可**
+  （この 3 点だけがデスクトップ版との機能差です。「常に最前面」は (c) で実現できます）。
+- **OBS のブラウザソース (CEF) で Web Bluetooth / Web Serial が動くかは未検証**です。
+  動かない場合でも、JSON インポートで「静的な盤面」は表示できます。
+- **BLE の RPC 同期は保証されません。** ZMK の RPC は BLE の INDICATE（1 往復 ≈ 20 バイト）で
   運ばれるため、キーマップのような大きな応答はブラウザ経由だと数十秒かかり、環境に
-  よっては完了しません。**JSON インポートが確実な経路**です（上記「キーマップの供給」参照）。
+  よっては完了しません（USB にはこの制限がありません）。**JSON インポートが確実な経路**です
+  （上記「キーマップの供給」参照）。
 - **(c) 常に最前面は Chrome / Edge 116 以降**が必要です（Document Picture-in-Picture）。
   未対応環境ではボタンが無効化され、理由が表示されます。
 - Mod-Tap / Sticky Shift の押下状態は追跡していません（デスクトップ版と同じ制約）。
@@ -401,7 +425,7 @@ https://tak-2025.github.io/Torabo-Float/?chrome=0
 
 **Apache License 2.0**（[LICENSE](LICENSE)）。
 
-本アプリは Torabo-Float / ZMK Studio / Torabo-Studio 由来のコードを含むため、Apache-2.0 第4条に
+本アプリは Torabo Float / ZMK Studio / Torabo Studio 由来のコードを含むため、Apache-2.0 第4条に
 従い帰属表記を [NOTICE](NOTICE) に保持しています。再配布の際は LICENSE と NOTICE を必ず同梱して
 ください。
 
@@ -409,7 +433,10 @@ https://tak-2025.github.io/Torabo-Float/?chrome=0
 
 ## 関連プロジェクト
 
-- **Torabo-Float** — デスクトップ版（Tauri v2、透過・最前面ウィンドウ）
-- **[torabo-tsuki](https://github.com/sekigon-gonnoc/zmk-keyboard-torabo-tsuki-lp)** — キーボード本体（上流・GPL-3.0）
-- **[torabo-tsuki_ext_FW](https://github.com/tak-2025/torabo-tsuki_ext_FW)** — `live_feed` を含む拡張 FW モジュール
+- **[torabo-fun](https://tak-2025.github.io/torabo-fun/)** — torabo-tsuki 拡張プロジェクト群の紹介ポータル
+- **[Torabo-Float](https://github.com/tak-2025/Torabo-Float)** — デスクトップ版（Tauri v2、透過・最前面ウィンドウ）
+- **[torabo-tsuki](https://github.com/sekigon-gonnoc/torabo-tsuki-lp)** — キーボード本体（上流・GPL-3.0）
+- **[torabo-tsuki_ext_FW](https://github.com/tak-2025/torabo-tsuki_ext_FW)** — `live_feed` / `torabo-rpc-tunnel` を含む拡張 FW モジュール
+- **[Torabo Studio](https://github.com/tak-2025/Torabo-Studio)** — キーマップ編集・ライブ設定アプリ
+- **[torabo-studio-android](https://github.com/tak-2025/torabo-studio-android)** — Android 版 Torabo Studio
 - **[ZMK Firmware](https://zmk.dev/)** / **[ZMK Studio](https://github.com/zmkfirmware/zmk-studio)**
