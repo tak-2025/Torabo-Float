@@ -5,8 +5,8 @@
 // (af01 live feed, af02 diagnostics, 0000…2482a RPC), USB gives one CDC byte
 // stream carrying ZMK Studio RPC, and everything torabo-specific rides a
 // "tunnel" subsystem inside it. See the Rust twin of this file,
-// src-tauri/src/transport/serial.rs (top-of-file comment), and web/PLAN.md
-// for the wider design context.
+// src-tauri/src/transport/serial.rs (top-of-file comment), for the wider
+// design context.
 //
 // Two consequences shape this file:
 //

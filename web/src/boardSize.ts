@@ -8,8 +8,8 @@
 // The geometry below therefore mirrors `computeContentBounds()` in
 // keyboard/PhysicalLayout.tsx: the bounding box over every key's four *rotated*
 // corners, at ONE_U px per key-unit. It is duplicated rather than exported from
-// there because PhysicalLayout.tsx is one of the files kept byte-identical with
-// Torabo-Float for diffing (see PLAN.md §2). Keep the two in sync if the
+// there because PhysicalLayout.tsx is kept byte-identical with the desktop
+// Torabo-Float copy so the two can be diffed. Keep the two in sync if the
 // layout math ever changes.
 
 import type { CachedKeymap } from "./keymap/cache";
