@@ -7,7 +7,7 @@
 // falls back to the first layer when unknown. Pressed positions get the accent,
 // and on a layer change every label switches immediately.
 import { useMemo } from "react";
-import { CachedKeymap } from "../keymap/cache";
+import { CachedKeymap } from "../keymap/types";
 import { LayerRef, resolveBindingFace } from "./binding-face";
 import { HidUsageLabel } from "./HidUsageLabel";
 import {

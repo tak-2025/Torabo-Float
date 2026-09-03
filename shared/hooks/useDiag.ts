@@ -1,10 +1,8 @@
 // Diagnostics state hook (sibling of useLiveFeed).
 //
-// Copied from Torabo-Float (src/hooks/useDiag.ts); the only change is the event
-// source (Tauri `listen` → `on` from ../events, which is synchronous).
-//
 // Owns a Map<device_id, DiagRecord> driven by the diagnostics NOTIFY stream —
-// af02 over BLE, tunnel feature 0x0F over USB; ../link picks. On mount
+// af02 over BLE, tunnel feature 0x0F over USB, or the Tauri event of the same
+// name; "~/link" resolves to whichever transport this target has. On mount
 // (panel open) it:
 //   1. subscribes (diagSubscribe) — if the firmware cannot provide the stream
 //      it flips `supported=false` so the panel can show the unsupported notice,
@@ -15,8 +13,8 @@
 // It also maintains an estimated device-uptime clock (`nowTickMs`) so the panel
 // can render "N秒前" from each record's last_tick_ms.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { on, Unlisten } from "../events";
-import { diagReadSnapshot, diagSetStreaming, diagSubscribe } from "../link";
+import { on, Unlisten } from "~/events";
+import { diagReadSnapshot, diagSetStreaming, diagSubscribe } from "~/link";
 import { DiagRecord, decodeDiag, decodeDiagBuffer } from "../diag";
 
 export interface DiagState {

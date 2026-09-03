@@ -17,13 +17,13 @@ import {
   liveFeedReadSnapshot,
   liveFeedSubscribe,
 } from "./ble";
-import { decodeLiveFeed, formatLiveFeed, LiveFeedEvent } from "./liveFeed";
-import { useLiveFeed } from "./hooks/useLiveFeed";
+import { decodeLiveFeed, formatLiveFeed, LiveFeedEvent } from "@shared/liveFeed";
+import { useLiveFeed } from "@shared/hooks/useLiveFeed";
 import { CachedKeymap, cacheRead, cacheWrite } from "./keymap/cache";
 import { syncKeymap } from "./keymap/sync";
-import { FloatBoard } from "./keyboard/FloatBoard";
-import { KeyLayout } from "./keyboard/legends";
-import { DiagPanel } from "./DiagPanel";
+import { FloatBoard } from "@shared/keyboard/FloatBoard";
+import { KeyLayout } from "@shared/keyboard/legends";
+import { DiagPanel } from "@shared/DiagPanel";
 
 // "scanning" is a BLE-only state: a radio scan takes seconds and needs its own
 // spinner. Listing USB ports is a synchronous OS lookup, so the USB path goes

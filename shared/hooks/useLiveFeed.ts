@@ -1,15 +1,12 @@
 // Live-feed state hook.
 //
-// Copied from Torabo-Float (src/hooks/useLiveFeed.ts). The ONLY change is the
-// event source: Tauri's `listen("live_feed_event")` becomes `on(...)` from the
-// shared transport bus in ../events — which both Web Bluetooth and Web Serial
-// publish to, so this hook has never needed to know the transport. Both return
-// an unlisten function, but the web one is synchronous, so the promise-tracking
-// dance the Tauri version needed collapses into a plain array of unlisteners.
-//
-// Owns the pressed-position set and the current layer fields.
+// Owns the pressed-position set and the current layer fields. Subscribes
+// through "~/events" — each target resolves that to its own adapter over the
+// same on(name, handler): Unlisten contract (src/events.ts wraps Tauri's
+// listen(); web/src/events.ts is the real multi-transport bus) — so this hook
+// has never needed to know the transport.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { on, Unlisten } from "../events";
+import { on, Unlisten } from "~/events";
 import {
   decodeLiveFeed,
   EvtType,

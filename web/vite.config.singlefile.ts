@@ -1,3 +1,4 @@
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { viteSingleFile } from "vite-plugin-singlefile";
@@ -23,6 +24,12 @@ export default defineConfig({
   // base/"./" assetsInlineLimit/cssCodeSplit/assetsDir/rollup output for us —
   // only outDir needs setting explicitly here.
   plugins: [react(), viteSingleFile()],
+  resolve: {
+    alias: {
+      "@shared": fileURLToPath(new URL("../shared", import.meta.url)),
+      "~": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   build: {
     target: "chrome105",
     outDir: "dist-single",

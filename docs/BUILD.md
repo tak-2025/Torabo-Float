@@ -65,8 +65,16 @@ load-bearing ではありません（前 2 つは npm が optionalDependencies �
 単一 HTML を Release ではなく Pages のペイロードに含めているのは、**ダウンロードがサイトより
 古くなることを構造的に防ぐ**ためです。デスクトップ版（`src/` + `src-tauri/`）はここではビルドしません。
 
-## 同期のメンテナンス
+## `shared/` — 単一ソース
 
-`src/` と `web/src/` には**バイト単位で同一に保つ約束のファイル**があります
-（[DESIGN-web.md](DESIGN-web.md) の表）。どちらかを触ったら、もう片方へ同じ変更を入れて
-`diff` が空になることを確認してください。
+盤面描画・デコーダ・キャッシュ形式のうち両ターゲットで同一のものは、リポジトリ直下の
+[`shared/`](../shared/) に 1 部だけあります（内訳は [DESIGN-web.md](DESIGN-web.md) の表）。
+`src/` と `web/src/` はそれぞれ `@shared/*`（`tsconfig.json` の `paths` と
+`vite.config*.ts` の `resolve.alias`）で参照するだけで、コピーは持ちません。
+「同期のメンテナンス」＝ 2 箇所を同じに保つ作業は、この分については発生しません
+（直す場所が 1 箇所しかないため）。
+
+デスクトップ / Web だけの継ぎ目ファイル（`events.ts` / `link.ts`）と、両ターゲットに
+意図的に残した書き換え組（`App.tsx` / `ble.ts` / `keymap/cache.ts` / `keymap/sync.ts` /
+`rpc/connect.ts` / `rpc/logging.ts` / `styles.css`）は今まで通り各ターゲットで個別に直します。
+理由は DESIGN-web.md の表に添えてあります。

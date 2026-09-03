@@ -43,7 +43,7 @@ Web 版の [`web/src/ble.ts`](../web/src/ble.ts) 冒頭。**両方に同じ値�
 12  u32  keymap_crc     全レイヤー・全バインディングの CRC32
 ```
 
-デコーダは [`src/liveFeed.ts`](../src/liveFeed.ts)（Web 版と**バイト単位で同一**）。
+デコーダは [`shared/liveFeed.ts`](../shared/liveFeed.ts)（デスクトップ / Web 両ターゲット共通の単一ソース）。
 `proto_ver` か `evt_type` が未知のもの、16 バイト未満のものは `null` を返して**黙って捨てます**
 （前方互換：新しい FW が増やしたイベント種別で落ちないため）。
 

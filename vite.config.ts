@@ -1,9 +1,22 @@
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      // Code kept byte-identical with the web build (web/src) — see
+      // shared/ and docs/DESIGN-web.md.
+      "@shared": fileURLToPath(new URL("./shared", import.meta.url)),
+      // This target's own src root, so shared code can reach a per-target
+      // seam file (shared/hooks/useDiag.ts imports "~/link") by a name both
+      // targets provide, instead of a relative path that would resolve
+      // outside shared/.
+      "~": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   // prevent vite from obscuring rust errors
   clearScreen: false,
   // Tauri expects a fixed port, fail if that port is not available

@@ -19,8 +19,18 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /* Sharing with the desktop build (../src): "@shared/*" is the code both
+       targets keep byte-identical (../shared); "~/*" is this target's own src
+       root, used only so shared code can reach a per-target seam file (see
+       shared/hooks/useDiag.ts importing "~/link") without a relative path that
+       would resolve outside shared/. */
+    "paths": {
+      "@shared/*": ["../shared/*"],
+      "~/*": ["./src/*"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "../shared"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

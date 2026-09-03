@@ -59,8 +59,8 @@ import {
   settingsToQuery,
   ThemeId,
 } from "./config";
-import { decodeLiveFeed, formatLiveFeed, LiveFeedEvent } from "./liveFeed";
-import { useLiveFeed } from "./hooks/useLiveFeed";
+import { decodeLiveFeed, formatLiveFeed, LiveFeedEvent } from "@shared/liveFeed";
+import { useLiveFeed } from "@shared/hooks/useLiveFeed";
 import {
   CachedKeymap,
   cacheClear,
@@ -70,8 +70,8 @@ import {
 } from "./keymap/cache";
 import { importKeymapFile } from "./keymap/import";
 import { syncKeymap } from "./keymap/sync";
-import { FloatBoard } from "./keyboard/FloatBoard";
-import { DiagPanel } from "./DiagPanel";
+import { FloatBoard } from "@shared/keyboard/FloatBoard";
+import { DiagPanel } from "@shared/DiagPanel";
 import type { Transport } from "./link";
 
 type ConnState = "disconnected" | "connecting" | "connected";

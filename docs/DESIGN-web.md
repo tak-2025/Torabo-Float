@@ -19,18 +19,51 @@ Web Bluetooth / Web Serial に置き換えたものです。
 
 ## ソース共有の実態
 
-`src/`（デスクトップ）と `web/src/` の同名ファイルの関係です。**「同一」の列は差分ゼロを維持する
-約束**で、片方だけ直すのは禁止です（diff で同期を確認できることが目的）。
+2026-09 のフェーズ⓪（`refactor/single-source`）で、手で同一に保っていたファイルは
+**単一ソース化**しました。`src/`（デスクトップ）と `web/src/`（Web）はもう同名ファイルを
+それぞれ持たず、共有分はリポジトリ直下の [`shared/`](../shared/) に 1 部だけ存在し、両ターゲットが
+そこを import します（`tsconfig.json` の `paths["@shared/*"]` と各 `vite.config*.ts` の
+`resolve.alias["@shared"]` が向き先。ルートは `./shared`、`web/` からは `../shared`）。
+「diff が空になることを確認する」というメンテナンス手順はこの分についてはもう存在しません
+（コピーが 1 部しかないので diff できない＝壊れようがない）。
 
 | 区分 | ファイル |
 |---|---|
-| **バイト単位で同一**（15） | `liveFeed.ts` / `main.tsx` / `diag.ts` / `DiagPanel.tsx` / `hid-usages.ts` / `keyboard/FloatBoard.tsx` / `keyboard/Key.tsx` / `keyboard/PhysicalLayout.tsx` / `keyboard/HidUsageLabel.tsx` / `keyboard/binding-face.ts` / `keyboard/legends.ts` ＋ データ 4 点（`hid-usage-name-overrides.json` / `keyboard-and-consumer-usage-tables.json` / `keyboard/behavior-short-names.json` / `keyboard/behavior-value-names.json`） |
-| **書き換えたもの**（9） | `App.tsx` / `ble.ts` / `hooks/useLiveFeed.ts` / `hooks/useDiag.ts` / `keymap/cache.ts` / `keymap/sync.ts` / `rpc/connect.ts` / `rpc/logging.ts` / `styles.css` |
+| **`shared/` に集約**（17） | `liveFeed.ts` / `diag.ts` / `DiagPanel.tsx` / `hid-usages.ts` / `keyboard/FloatBoard.tsx` / `keyboard/Key.tsx` / `keyboard/PhysicalLayout.tsx` / `keyboard/HidUsageLabel.tsx` / `keyboard/binding-face.ts` / `keyboard/legends.ts` / `hooks/useLiveFeed.ts` / `hooks/useDiag.ts` / `keymap/types.ts`（新設。`CachedKeymap` 型だけを抽出。下記参照） ＋ データ 4 点（`hid-usage-name-overrides.json` / `keyboard-and-consumer-usage-tables.json` / `keyboard/behavior-short-names.json` / `keyboard/behavior-value-names.json`） |
+| **各ターゲットに残したもの（意図的に別実装）** | `App.tsx`（UI の骨格そのものが別物 = URL 設定・Landing・3 表示方式・route B は Web だけ） / `main.tsx`（9 行の起点シムだが `./App` の相対 import が絡むため見送り。下記参照） / `ble.ts`（transport 実装そのもの） / `events.ts`・`link.ts`（後述の継ぎ目。実装は別） / `keymap/cache.ts`（保存先が Rust invoke と localStorage で別。型だけ `shared/keymap/types.ts` へ） / `keymap/sync.ts`（Web は進捗コールバック＋GATT書き込み失敗の補足を持つ） / `rpc/connect.ts`（transport 別の unsubscribe） / `rpc/logging.ts`（タイムアウト戦略が別：デスクトップ4秒固定 / Webはアイドル15秒+上限120秒） / `styles.css`（Web 追加分が大きく単純な追記ではない） |
 | **Web だけにあるもの**（11） | `serial.ts` / `link.ts` / `events.ts` / `config.ts` / `Landing.tsx` / `bridge.ts` / `pip.ts` / `boardSize.ts` / `rpc/activity.ts` / `keymap/import.ts` / `keymap/torabo-tsuki-layouts.json` |
 
 `boardSize.ts` の幾何計算だけは `keyboard/PhysicalLayout.tsx` の `computeContentBounds()` と
-**意図的に重複**しています。PhysicalLayout.tsx を「同一」の側に留めるため、そこから export せずに
-複製しました。レイアウト計算を変えるときは両方直してください。
+**意図的に重複**しています。PhysicalLayout.tsx が `shared/` へ移った後も、そこから export せずに
+複製したままです。レイアウト計算を変えるときは両方直してください。
+
+### 継ぎ目（seam）— `events.ts` / `link.ts`
+
+`hooks/useLiveFeed.ts` と `hooks/useDiag.ts` は元々「イベント購読の入口が Tauri の `listen()` か
+`events.ts` の `on()` か」だけが違う書き換え組でした。それぞれのターゲットが同じ
+`on(name, handler): Unlisten` 契約を持つ `events.ts`（さらに useDiag は診断コマンド 3 つを持つ
+`link.ts`）を **自分の src ルートに置く**ことにして、フックからは `~/events` / `~/link`
+（`tsconfig.json` の `paths["~/*"]`、`vite.config*.ts` の `resolve.alias["~"]`。ルートは `./src`）
+という一貫した名前で参照させ、フック本体を `shared/hooks/` へ統合しました。
+
+- `src/events.ts`（新設）— Tauri の `listen()`/`UnlistenFn`（非同期）を、Web 版と同じ同期 `on()` に
+  アダプトするだけの薄いラッパー。
+- `src/link.ts`（新設）— デスクトップは transport が Rust 側 (`ble.ts` 内) で既に統合済みなので、
+  診断 3 関数を `./ble` から re-export するだけ。
+- `web/src/events.ts` / `web/src/link.ts` は元々あった実装のまま（BLE/USB 2 transport を実際に
+  仲介する本体）。
+
+同じ契約を挟むことで購読ロジックが完全に同一になったので `hooks/*` を共有できましたが、
+`events.ts`/`link.ts` 自体は実装が別物なので共有していません（契約だけ共通）。
+
+### 移すのを見送ったもの — `main.tsx`
+
+`main.tsx` もバイト単位で同一でしたが、`shared/` へ移すには中身の
+`import { App } from "./App"` を alias 参照に変えるだけでなく、`index.html` の
+`<script src="/src/main.tsx">` が Vite のプロジェクトルート外を指すことになり、Web 側で
+`server.fs.allow` の追加設定が要ります。9 行のボイラープレートのためにその設定面を増やす
+価値がないと判断し、重複のまま残しました（`~/App` alias は他の継ぎ目で導入済みなので、
+将来 index.html 側の解決策が見つかれば移せます）。
 
 ## 表示 3 方式
 
