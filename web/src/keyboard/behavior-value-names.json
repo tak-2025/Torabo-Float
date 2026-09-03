@@ -1,0 +1,12 @@
+{
+  "_comment": "Keycap-sized forms of the value names the firmware reports for constant parameters (behavior_bt.c, behavior_outputs.c, ...). '{p2}' is replaced by param2, which those behaviors use for the profile index. A newline splits the label over two lines, which is how the two Clear commands are told apart at a glance. Unlisted names fall back to initials, so a firmware that adds a value still shows something.",
+  "Select Profile": "P{p2}",
+  "Disconnect Profile": "DISC\nP{p2}",
+  "Next Profile": "NEXT",
+  "Previous Profile": "PREV",
+  "Clear Selected Profile": "CLR\nSEL",
+  "Clear All Profiles": "CLR\nALL",
+  "Toggle Outputs": "TOG",
+  "USB Output": "USB",
+  "BLE Output": "BLE"
+}

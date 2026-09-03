@@ -27,6 +27,9 @@ export interface SyncSnapshot {
 /** Progress text for the UI. A sync over BLE takes tens of seconds. */
 export type SyncProgress = (message: string) => void;
 
+/** Called once at the end of a successful sync with a per-leg breakdown. */
+export type SyncTiming = (summary: string) => void;
+
 /**
  * Perform a full keymap sync. `snapshot` carries the live_feed SNAPSHOT values
  * (keymapCrc + activeLayout) captured at sync time; they are stored alongside so
@@ -40,8 +43,24 @@ export type SyncProgress = (message: string) => void;
  */
 export async function syncKeymap(
   snapshot: SyncSnapshot,
-  onProgress: SyncProgress = () => {}
+  onProgress: SyncProgress = () => {},
+  onTiming: SyncTiming = () => {}
 ): Promise<CachedKeymap> {
+  // Each leg is timed and stamped into the progress line, because "how long
+  // does a first sync actually take over browser BLE" is the question that
+  // decides whether auto-syncing on connect is reasonable at all. Without this
+  // the only answer available is a stopwatch pointed at a spinner.
+  const started = performance.now();
+  const legs: string[] = [];
+  let legStart = started;
+  const elapsed = () => (performance.now() - started) / 1000;
+  /** Close the previous leg, if any, and start timing the next one. */
+  const leg = (name: string) => {
+    if (name) legs.push(`${name} ${((performance.now() - legStart) / 1000).toFixed(1)}s`);
+    legStart = performance.now();
+  };
+  const progress: SyncProgress = (message) =>
+    onProgress(`${message}（${elapsed().toFixed(0)}秒）`);
   const { conn, close, lastWriteError } = await openRpc();
   // A GATT write failure is invisible to call_rpc (see connect.ts) and shows up
   // only as a timeout; prefer the real cause whenever one was recorded.
@@ -52,7 +71,7 @@ export async function syncKeymap(
   };
   try {
     // --- Physical layouts (keep active index + all layouts) ---
-    onProgress("物理レイアウトを取得中…");
+    progress("物理レイアウトを取得中…");
     const layoutsResp = await call_rpc(conn, {
       keymap: { getPhysicalLayouts: true },
     });
@@ -66,7 +85,8 @@ export async function syncKeymap(
       layoutsResp?.keymap?.getPhysicalLayouts?.activeLayoutIndex || 0;
 
     // --- Keymap (layers keyed by id) ---
-    onProgress("キーマップを取得中…");
+    leg("レイアウト");
+    progress("キーマップを取得中…");
     const keymapResp = await call_rpc(conn, { keymap: { getKeymap: true } });
     const keymap = keymapResp?.keymap?.getKeymap;
     if (!keymap || !keymap.layers || keymap.layers.length === 0) {
@@ -74,9 +94,12 @@ export async function syncKeymap(
     }
 
     // --- Behaviors (retry loop; RPC can be disrupted by HID traffic) ---
-    const behaviors = await fetchBehaviors(conn, onProgress);
+    leg("キーマップ");
+    const behaviors = await fetchBehaviors(conn, progress);
+    leg(`ビヘイビア ${Object.keys(behaviors).length} 件`);
 
     close();
+    onTiming(`同期 ${elapsed().toFixed(1)}秒（${legs.join(" / ")}）`);
 
     return {
       version: CACHE_VERSION,
@@ -135,7 +158,13 @@ async function fetchBehaviorsOnce(
     });
     const dets = detailResp?.behaviors?.getBehaviorDetails;
     if (dets) {
-      map[dets.id] = { id: dets.id, displayName: dets.displayName };
+      // Keep the parameter metadata, not just the name: the board reads it to
+      // work out what each binding does (keyboard/binding-face.ts).
+      map[dets.id] = {
+        id: dets.id,
+        displayName: dets.displayName,
+        metadata: dets.metadata,
+      };
     } else {
       // A missing detail means the exchange was disrupted; retry the whole set.
       console.warn(

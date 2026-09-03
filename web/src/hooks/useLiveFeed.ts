@@ -66,9 +66,19 @@ export function useLiveFeed(
 
   useEffect(() => {
     const unlisteners: Unlisten[] = [
+      // A frame the firmware sent must never be able to stop the feed. decode*
+      // is total (it returns null instead of throwing — see liveFeed.ts's
+      // forward-compat contract, live_feed.h:14), and this guard covers the
+      // rest of the path: a render/state error raised by applyEvent would
+      // otherwise escape into the transport's dispatch loop with the
+      // subscription still delivering into a broken listener.
       on("live_feed_event", (payload) => {
-        const decoded = decodeLiveFeed(payload);
-        if (decoded) applyEvent(decoded);
+        try {
+          const decoded = decodeLiveFeed(payload);
+          if (decoded) applyEvent(decoded);
+        } catch (e) {
+          console.error("[live_feed] dropping a frame that failed to apply", e);
+        }
       }),
       on("connection_disconnected", () => {
         setPressed(new Set());

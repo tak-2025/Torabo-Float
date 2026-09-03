@@ -8,6 +8,7 @@
 // and on a layer change every label switches immediately.
 import { useMemo } from "react";
 import { CachedKeymap } from "../keymap/cache";
+import { LayerRef, resolveBindingFace } from "./binding-face";
 import { HidUsageLabel } from "./HidUsageLabel";
 import {
   decodeParam,
@@ -33,23 +34,45 @@ interface FloatBoardProps {
   onContentSize?: (width: number, height: number) => void;
 }
 
-// The face drawn on a key body. For keyboard-page usages that appear in the
-// active legend table it renders a two-tier keycap (small sub glyph above, big
-// main glyph below) with a ⇧ marker on statically-shifted bindings; everything
-// else falls through to the untouched HidUsageLabel.
+// The face drawn on a key body, as decided by resolveBindingFace.
+//
+// Not every binding types a character: `text` is a layer name or a firmware
+// value name and is drawn as-is. For a `usage` on the keyboard page that appears
+// in the active legend table this renders a two-tier keycap (small sub glyph
+// above, big main glyph below) with a ⇧ marker on statically-shifted bindings;
+// everything else falls through to the untouched HidUsageLabel.
+//
+// Two kinds of shift meet here and must not be confused:
+//   * `shifted` — the *binding* carries an implicit shift (&kp AT_SIGN). The key
+//     can only ever type the shifted glyph, so that glyph takes the face alone.
+//   * `shiftHeld` — a physical Shift is down *right now* (FloatBoard computes it
+//     from the live pressed set). It changes what the remaining keys would type,
+//     so their shift face is promoted while it is held.
+// The first wins: a binding's own shift is a property of the key and does not
+// change when the user lets go of Shift.
 function KeyFace({
-  param1,
+  usage,
+  text,
   keyLayout,
   shiftHeld,
 }: {
-  param1: number;
+  usage?: number;
+  text?: string;
   keyLayout: KeyLayout;
   shiftHeld: boolean;
 }) {
-  const { page, id, shifted } = decodeParam(param1);
+  if (text !== undefined) {
+    return <span className="key-face-text">{text}</span>;
+  }
+
+  if (usage === undefined) {
+    return <span />;
+  }
+
+  const { page, id, shifted } = decodeParam(usage);
   const legend = lookupLegend(keyLayout, page, id);
   if (!legend) {
-    return <HidUsageLabel hid_usage={param1} />;
+    return <HidUsageLabel hid_usage={usage} />;
   }
 
   let main: string;
@@ -57,10 +80,10 @@ function KeyFace({
   let showShift = false;
 
   if (shifted) {
-    // Binding carries an implicit shift (e.g. &kp AT_SIGN): the shift glyph is
-    // what this key actually types, so it's the main face.
+    // The shift glyph is the only thing this key can type, so it gets the face
+    // alone. The unshifted glyph is deliberately not drawn — it is unreachable
+    // from this key, and showing it would read as a second, available legend.
     main = legend.shift ?? legend.base;
-    sub = legend.shift ? legend.base : undefined;
     showShift = true;
   } else if (shiftHeld && legend.shift) {
     // Live shift is held: emphasise the shift face so the user sees what
@@ -118,16 +141,27 @@ export function FloatBoard({
       const binding = layer.bindings[pos];
       if (!binding) continue;
       const { page, id, mods } = decodeParam(binding.param1);
-      if (
-        page === PAGE_KEYBOARD &&
-        (id === USAGE_LEFT_SHIFT || id === USAGE_RIGHT_SHIFT)
-      ) {
-        return true;
-      }
-      if (mods & (MOD_LSFT | MOD_RSFT)) return true;
+      if (page !== PAGE_KEYBOARD) continue;
+      if (id === USAGE_LEFT_SHIFT || id === USAGE_RIGHT_SHIFT) return true;
+      // Shift *modifiers* on a key that also types something — `&kp LS(N0)`,
+      // i.e. the `)` key — do NOT count. That binding sends Shift, but only to
+      // shift itself; the user is typing a symbol, not holding Shift to modify
+      // the next key. Counting it flipped the whole number row to its shifted
+      // face for as long as the key was down, and left it there for good if the
+      // release was ever missed. Only a bare modifier (no usage of its own)
+      // means "Shift is being held".
+      if (id === 0 && mods & (MOD_LSFT | MOD_RSFT)) return true;
     }
     return false;
   }, [layer, pressed]);
+
+  // Hold-tap headers and &mo/&to faces name the layer they switch to, so the
+  // face resolver needs the layer list. cache.layers already carries the
+  // firmware's own {id, name}.
+  const layers: LayerRef[] = useMemo(
+    () => cache.layers.map(({ id, name }) => ({ id, name })),
+    [cache.layers]
+  );
 
   const positions: KeyPosition[] = useMemo(() => {
     if (!layout || !layer) return [];
@@ -146,19 +180,24 @@ export function FloatBoard({
       if (!binding) {
         return { ...base, header: "Unknown", children: <span /> };
       }
+      const behavior = cache.behaviors[binding.behaviorId];
+      const face = resolveBindingFace(binding, behavior, layers);
       return {
         ...base,
-        header: cache.behaviors[binding.behaviorId]?.displayName || "Unknown",
+        header: behavior?.displayName || "Unknown",
+        hold: face.hold,
+        muted: face.muted,
         children: (
           <KeyFace
-            param1={binding.param1}
+            usage={face.usage}
+            text={face.text}
             keyLayout={keyLayout}
             shiftHeld={shiftHeld}
           />
         ),
       };
     });
-  }, [layout, layer, cache.behaviors, keyLayout, shiftHeld]);
+  }, [layout, layer, cache.behaviors, layers, keyLayout, shiftHeld]);
 
   return (
     <div className="floatboard">

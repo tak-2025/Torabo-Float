@@ -57,9 +57,34 @@ const STATUS_OK = 0;
 /** live_feed. Its blob is the same 16-byte record the af01 GATT char carries. */
 const FEATURE_LIVE_FEED = 0x0f;
 
-/** DIAG record marker at byte 1 — how one feature carries two streams. */
+/**
+ * The live_feed wire, as this router needs to know it (FW live_feed.h).
+ *
+ * proto_ver is byte 0 and evt_type byte 1 of EVERY record, whichever struct it
+ * turns out to be — that shared prefix is what lets one tunnel feature carry
+ * two streams. DIAG (4, live_feed.h:97) goes to the diagnostics event, the
+ * key/layer types (1-3, live_feed.h:26-28) to the live one.
+ *
+ * live_feed.h:14 makes ignoring an unknown proto_ver / evt_type the app's job.
+ * Doing it here as well as in the decoders is deliberate: this router would
+ * otherwise have to *guess* a stream for a record type it does not know, and
+ * its only non-DIAG guess is the hot key/layer feed. Dropping is the honest
+ * answer, and it keeps the USB path byte-identical to the BLE one, where af01
+ * and af02 are separate characteristics and no such guess exists.
+ */
+const PROTO_VER = 1;
 const EVT_DIAG = 4;
+const LIVE_EVT_TYPES = new Set([1, 2, 3]);
 const RECORD_LEN = 16;
+
+/** Is this 16-byte slice a record this build can route? live_feed.h:14. */
+function isKnownRecord(rec: ArrayLike<number>): boolean {
+  return (
+    rec.length === RECORD_LEN &&
+    rec[0] === PROTO_VER &&
+    (rec[1] === EVT_DIAG || LIVE_EVT_TYPES.has(rec[1]))
+  );
+}
 
 /**
  * Tunnel request ids start high so they can never collide with the ts-client's,
@@ -605,10 +630,16 @@ function dispatch(link: ActiveLink, frame: Frame) {
  * evt_type belongs to. One record is the normal case; the loop covers a
  * firmware that batches several into one notification (the FW caps a blob at
  * 64 bytes, so at most four).
+ *
+ * The stride is exactly RECORD_LEN — the only framing this wire has
+ * (live_feed.h:144) — so a trailing partial record is left unsent rather than
+ * padded or half-read, and an unroutable record (isKnownRecord) is skipped
+ * without disturbing the ones batched around it.
  */
 function emitRecords(blob: number[]) {
   for (let off = 0; off + RECORD_LEN <= blob.length; off += RECORD_LEN) {
     const rec = blob.slice(off, off + RECORD_LEN);
+    if (!isKnownRecord(rec)) continue;
     emit(rec[1] === EVT_DIAG ? "live_feed_diag_event" : "live_feed_event", rec);
   }
 }
@@ -670,16 +701,20 @@ export async function liveFeedSubscribe(): Promise<boolean> {
 }
 
 /**
- * READ(0x0F) — the tunnel's snapshot, filtered to the first non-DIAG record.
- * Falls back to the whole blob so a firmware answering with a bare SNAPSHOT
- * record works too (decodeLiveFeed reads only the first 16 bytes either way).
+ * READ(0x0F) — the tunnel's snapshot, filtered to the first key/layer record.
+ *
+ * A bare 16-byte SNAPSHOT answer is just the first iteration of this loop, so
+ * there is no whole-blob fallback: returning the blob unsliced would hand
+ * decodeLiveFeed something that is not one record, and it now (correctly) drops
+ * anything that is not exactly 16 bytes. Nothing found = no snapshot.
  */
 export async function liveFeedReadSnapshot(): Promise<number[]> {
   const blob = await tunnelCall(FEATURE_LIVE_FEED, OP_READ);
   for (let off = 0; off + RECORD_LEN <= blob.length; off += RECORD_LEN) {
-    if (blob[off + 1] !== EVT_DIAG) return blob.slice(off, off + RECORD_LEN);
+    const rec = blob.slice(off, off + RECORD_LEN);
+    if (isKnownRecord(rec) && rec[1] !== EVT_DIAG) return rec;
   }
-  return blob;
+  return [];
 }
 
 // --- diag -------------------------------------------------------------------
@@ -689,12 +724,18 @@ export async function diagSubscribe(): Promise<boolean> {
   return true;
 }
 
-/** READ(0x0F) filtered to the DIAG records, concatenated as decodeDiagBuffer wants. */
+/**
+ * READ(0x0F) filtered to the DIAG records, concatenated as decodeDiagBuffer
+ * wants. Records this build cannot name are left out rather than concatenated
+ * into the buffer (live_feed.h:14), so the 16-byte stride decodeDiagBuffer
+ * walks stays true for everything that does reach it.
+ */
 export async function diagReadSnapshot(): Promise<number[]> {
   const blob = await tunnelCall(FEATURE_LIVE_FEED, OP_READ);
   const out: number[] = [];
   for (let off = 0; off + RECORD_LEN <= blob.length; off += RECORD_LEN) {
-    if (blob[off + 1] === EVT_DIAG) out.push(...blob.slice(off, off + RECORD_LEN));
+    const rec = blob.slice(off, off + RECORD_LEN);
+    if (isKnownRecord(rec) && rec[1] === EVT_DIAG) out.push(...rec);
   }
   return out;
 }

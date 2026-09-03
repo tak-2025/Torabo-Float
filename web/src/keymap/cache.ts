@@ -1,4 +1,4 @@
-// Local keymap cache. Same schema as Torabo-Float's cache (CACHE_VERSION 1) so
+// Local keymap cache. Same schema as Torabo-Float's cache (same CACHE_VERSION) so
 // the desktop app's %APPDATA%/io.github.tak-2025.torabo-float/keymap-cache.json
 // can be imported here byte-for-byte — that file IS route B.
 //
@@ -7,18 +7,42 @@
 // under the ~5 MB per-origin budget, so IndexedDB is not needed. A quota
 // failure is reported but never fatal: the in-memory cache still renders the
 // board for the rest of the session.
+import type { BehaviorBindingParametersSet } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
 import type {
   PhysicalLayout,
   Layer,
 } from "@zmkfirmware/zmk-studio-ts-client/keymap";
 
-export const CACHE_VERSION = 1 as const;
+// 2: behaviors carry the firmware's parameter metadata, which the board needs to
+// know what a binding actually does (keyboard/binding-face.ts).
+//
+// A version-1 cache is still READ, not discarded. It has no metadata, so the
+// board falls back to drawing param1 — exactly what this app did before v2, so
+// nothing gets worse — and the next sync fills the metadata in. Rejecting it
+// was the obvious move and the wrong one: a null cache makes App.tsx auto-sync
+// on connect, and a full keymap sync over browser BLE runs on 20-byte INDICATE
+// round trips (see README, 既知の制約), so it can take minutes or never
+// finish. Nobody should lose a working board to a cosmetic improvement.
+export const CACHE_VERSION = 2 as const;
+
+/** Versions this app can render. Older ones simply lack metadata. */
+const READABLE_VERSIONS: number[] = [1, 2];
 
 const CACHE_KEY = "torabo-float-keymap-cache";
 
 export interface CachedBehavior {
   id: number;
   displayName: string;
+  /**
+   * The firmware's own description of this behavior's two binding parameters
+   * (getBehaviorDetails). Plain JSON — nested objects and numbers only — so it
+   * survives the round trip through this file untouched.
+   *
+   * Optional: a cache converted from a Torabo Studio backup file has only the
+   * display-name table, and binding-face.ts falls back to the old
+   * param1-as-usage face when it is missing.
+   */
+  metadata?: BehaviorBindingParametersSet[];
 }
 
 export interface CachedKeymap {
@@ -53,11 +77,11 @@ export function parseCachedKeymap(raw: string): CachedKeymap {
   if (!c || typeof c !== "object") {
     throw new Error("キーマップキャッシュの形式ではありません");
   }
-  if (c.version !== CACHE_VERSION) {
+  if (typeof c.version !== "number" || !READABLE_VERSIONS.includes(c.version)) {
     throw new Error(
       `対応していないキャッシュ版数です（version=${String(
         c.version
-      )}、対応=${CACHE_VERSION}）`
+      )}、対応=${READABLE_VERSIONS.join(" / ")}）`
     );
   }
   if (!Array.isArray(c.layouts) || c.layouts.length === 0) {

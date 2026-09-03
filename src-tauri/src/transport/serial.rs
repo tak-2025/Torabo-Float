@@ -70,14 +70,37 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 /// node_modules/@zmkfirmware/zmk-studio-ts-client/lib/index.js `current_request`).
 const REQUEST_ID_BASE: u32 = 0x4000_0000;
 
-/// A DIAG record (see diag.ts). `evt_type` lives at byte 1 of every live_feed
-/// record, which is what lets one tunnel feature carry both streams.
+/// The live_feed wire, as this router needs to know it (FW live_feed.h).
+///
+/// `proto_ver` is byte 0 and `evt_type` byte 1 of EVERY record, whichever of the
+/// two structs it turns out to be — that shared prefix is what lets one tunnel
+/// feature carry both streams. DIAG (4, live_feed.h:97) belongs to the
+/// diagnostics event, the key/layer types (1-3, live_feed.h:26-28) to the live
+/// one.
+///
+/// live_feed.h:14 states the forward-compat convention the firmware depends on:
+/// "The app ignores unknown proto_ver / evt_type." Enforcing it here as well as
+/// in the TS decoders is deliberate rather than redundant: this router would
+/// otherwise have to *guess* a stream for a record type it cannot name, and its
+/// only non-DIAG guess is the hot key/layer feed. Dropping is the honest answer,
+/// and it keeps the USB path byte-identical to the BLE one, where af01 and af02
+/// are separate characteristics and the guess never arises.
 ///
 /// The FW caps a notification blob at 64 bytes, so at most four records can
 /// share one — well above the one-record-per-event the live feed actually
 /// sends, but `emit_records` below handles the batched case anyway.
+const PROTO_VER: u8 = 1;
 const EVT_DIAG: u8 = 4;
 const RECORD_LEN: usize = 16;
+
+/// Is this slice one whole record this build can route? A slice that is not
+/// exactly RECORD_LEN is truncation or an unknown layout — live_feed.h:144
+/// fixes every record on this wire at 16 bytes (BUILD_ASSERTs at :55 and :140).
+fn is_known_record(rec: &[u8]) -> bool {
+    rec.len() == RECORD_LEN
+        && rec[0] == PROTO_VER
+        && matches!(rec[1], 1 | 2 | 3 | EVT_DIAG)
+}
 
 pub struct SerialLink {
     pub port_name: String,
@@ -424,50 +447,63 @@ fn dispatch(link: &Arc<SerialLink>, app_handle: &AppHandle, payload: Vec<u8>, ra
 /// Split a notification blob into 16-byte records and emit each on the event
 /// its `evt_type` belongs to. A single record is the normal case; the loop
 /// exists so a firmware that batches several into one notification still works.
+///
+/// The stride is exactly RECORD_LEN — the only framing this wire has — so a
+/// trailing partial record is left unsent rather than half-read, and a record
+/// this build cannot name (`is_known_record`) is skipped without disturbing the
+/// ones batched around it. Nothing here can panic on a malformed blob: every
+/// index is a checked slice, so a bad frame costs one dropped record and the
+/// reader thread keeps running.
 fn emit_records(app_handle: &AppHandle, blob: &[u8]) {
     use tauri::Emitter;
 
-    if blob.len() < RECORD_LEN {
-        return;
-    }
     let mut off = 0usize;
     while off + RECORD_LEN <= blob.len() {
         let rec = &blob[off..off + RECORD_LEN];
+        off += RECORD_LEN;
+        if !is_known_record(rec) {
+            continue;
+        }
         let event = if rec[1] == EVT_DIAG {
             "live_feed_diag_event"
         } else {
             "live_feed_event"
         };
         let _ = app_handle.emit(event, rec.to_vec());
-        off += RECORD_LEN;
     }
 }
 
 // --- snapshot helpers (used by live_feed.rs / diag.rs) ----------------------
 
-/// The first non-DIAG record of a tunnel snapshot — the `live_feed_read_snapshot`
-/// answer. Falls back to the whole blob so a firmware that returns a bare
-/// SNAPSHOT record still works.
+/// The first key/layer record of a tunnel snapshot — the
+/// `live_feed_read_snapshot` answer.
+///
+/// A firmware answering with a bare SNAPSHOT record is just the first iteration
+/// of this loop, so there is no whole-blob fallback: handing back an unsliced
+/// blob would give `decodeLiveFeed` something that is not one record, and it
+/// drops anything that is not exactly 16 bytes. Nothing found = no snapshot.
 pub fn snapshot_live_record(blob: &[u8]) -> Vec<u8> {
     let mut off = 0usize;
     while off + RECORD_LEN <= blob.len() {
         let rec = &blob[off..off + RECORD_LEN];
-        if rec[1] != EVT_DIAG {
+        if is_known_record(rec) && rec[1] != EVT_DIAG {
             return rec.to_vec();
         }
         off += RECORD_LEN;
     }
-    blob.to_vec()
+    Vec::new()
 }
 
 /// Every DIAG record of a tunnel snapshot, concatenated — the shape
 /// `diag_read_snapshot` promises (`decodeDiagBuffer` walks it in 16-byte steps).
+/// Records this build cannot name are left out rather than concatenated in, so
+/// that 16-byte stride stays true for everything that does reach the app.
 pub fn snapshot_diag_records(blob: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut off = 0usize;
     while off + RECORD_LEN <= blob.len() {
         let rec = &blob[off..off + RECORD_LEN];
-        if rec[1] == EVT_DIAG {
+        if is_known_record(rec) && rec[1] == EVT_DIAG {
             out.extend_from_slice(rec);
         }
         off += RECORD_LEN;
@@ -480,4 +516,64 @@ pub async fn set_diag_streaming(link: &Arc<SerialLink>, on: bool) -> Result<(), 
     link.tunnel_call(FEATURE_LIVE_FEED, OP_WRITE, &[if on { 1 } else { 0 }])
         .await
         .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One valid record: proto_ver, evt_type, then filler to exactly 16 bytes.
+    fn record(proto_ver: u8, evt_type: u8) -> Vec<u8> {
+        let mut r = vec![proto_ver, evt_type];
+        r.extend_from_slice(&[0xaa; RECORD_LEN - 2]);
+        r
+    }
+
+    #[test]
+    fn accepts_every_documented_record_type() {
+        for evt in [1u8, 2, 3, EVT_DIAG] {
+            assert!(is_known_record(&record(PROTO_VER, evt)), "evt_type {}", evt);
+        }
+    }
+
+    #[test]
+    fn rejects_wrong_length_frames() {
+        // live_feed.h BUILD_ASSERTs both structs at 16 bytes; 15 is truncation
+        // and 17 is a layout this build does not know. Neither is parsed.
+        let mut short = record(PROTO_VER, 1);
+        short.pop();
+        assert!(!is_known_record(&short));
+
+        let mut long = record(PROTO_VER, 1);
+        long.push(0);
+        assert!(!is_known_record(&long));
+    }
+
+    #[test]
+    fn rejects_future_proto_ver_and_unknown_evt_type() {
+        // live_feed.h:14 — ignore both rather than route them somewhere.
+        assert!(!is_known_record(&record(PROTO_VER + 1, 1)));
+        assert!(!is_known_record(&record(PROTO_VER, 5)));
+        assert!(!is_known_record(&record(PROTO_VER, 0)));
+    }
+
+    #[test]
+    fn snapshot_helpers_skip_records_they_cannot_name() {
+        let mut blob = Vec::new();
+        blob.extend_from_slice(&record(PROTO_VER + 1, 3)); // future version
+        blob.extend_from_slice(&record(PROTO_VER, 5)); // future evt_type
+        blob.extend_from_slice(&record(PROTO_VER, EVT_DIAG));
+        blob.extend_from_slice(&record(PROTO_VER, 3)); // the real SNAPSHOT
+        blob.push(0x00); // trailing partial record
+
+        assert_eq!(snapshot_live_record(&blob), record(PROTO_VER, 3));
+        assert_eq!(snapshot_diag_records(&blob), record(PROTO_VER, EVT_DIAG));
+    }
+
+    #[test]
+    fn snapshot_live_record_yields_nothing_when_no_live_record_present() {
+        assert!(snapshot_live_record(&record(PROTO_VER, EVT_DIAG)).is_empty());
+        assert!(snapshot_live_record(&[0x01, 0x03]).is_empty());
+        assert!(snapshot_live_record(&[]).is_empty());
+    }
 }

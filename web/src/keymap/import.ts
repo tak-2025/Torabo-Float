@@ -4,10 +4,12 @@
 // sync is best-effort over BLE and can fail, but a file always works. Two file
 // shapes are accepted, told apart by their top-level keys:
 //
-//   1. Torabo-Float cache (`version: 1`)
+//   1. Torabo-Float cache (`version: CACHE_VERSION`)
 //      Written by this app's export button AND by the desktop Torabo-Float at
 //      %APPDATA%/io.github.tak-2025.torabo-float/keymap-cache.json. Complete:
-//      it carries physical layouts, layers and the behavior name table.
+//      it carries physical layouts, layers and the behavior table (names plus,
+//      from version 2, the firmware's parameter metadata). A file from an older
+//      version is refused rather than rendered — see cache.ts.
 //
 //   2. torabo-tsuki backup (`format: "torabo-tsuki-backup"`)
 //      Written by Torabo Studio's バックアップ panel. Carries the keymap
@@ -26,6 +28,11 @@
 // every key header is right, on any machine. v1-v3 files have no table at all;
 // we fall back to whatever table the current cache holds and say so, because
 // those names are only correct if the cache came from the same keyboard.
+//
+// A backup never carries the firmware's *parameter* metadata (it is not needed
+// to restore a keymap), so a converted backup has behavior names but no
+// metadata. The board then draws the pre-metadata faces for those keys — see
+// keyboard/binding-face.ts, which falls back rather than failing.
 import type {
   Layer,
   PhysicalLayout,

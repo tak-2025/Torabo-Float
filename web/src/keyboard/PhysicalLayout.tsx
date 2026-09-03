@@ -17,6 +17,10 @@ import { Key } from "./Key";
 export type KeyPosition = PropsWithChildren<{
   id: string;
   header?: string;
+  /** Hold half of a hold-tap, appended to the header. See Key.tsx. */
+  hold?: string;
+  /** Draw this key recessed (&trans / &none). See Key.tsx. */
+  muted?: boolean;
   width: number;
   height: number;
   x: number;

@@ -72,10 +72,18 @@ export function useDiag(active: boolean) {
       });
     };
 
+    // Same guarantee as useLiveFeed: decodeDiag is total (unknown proto_ver /
+    // evt_type and any non-16-byte frame become null, live_feed.h:14, :94-95),
+    // and the try/catch keeps a failure further down from escaping into Tauri's
+    // event dispatch and wedging the diagnostics stream.
     track(
       listen<number[]>("live_feed_diag_event", (ev) => {
-        const decoded = decodeDiag(ev.payload);
-        if (decoded) applyRecord(decoded);
+        try {
+          const decoded = decodeDiag(ev.payload);
+          if (decoded) applyRecord(decoded);
+        } catch (e) {
+          console.error("[diag] dropping a record that failed to apply", e);
+        }
       })
     );
     track(

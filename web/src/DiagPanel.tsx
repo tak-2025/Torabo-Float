@@ -7,9 +7,8 @@
 // encoders — the live cw/ccw/btn counters decoded from `detail`.
 import {
   DiagRecord,
-  Kind,
   Status,
-  decodeEncoderDetail,
+  encoderCounters,
   diagChip,
   diagLabel,
   formatLastSeen,
@@ -51,8 +50,10 @@ function DiagRow({
   nowTickMs: number;
 }) {
   const chip = diagChip(rec);
-  const isEncoder = rec.metaFields.kind === Kind.ENCODER;
-  const enc = isEncoder ? decodeEncoderDetail(rec.detail) : null;
+  // `detail` is a positional overload (live_feed.h:117-126); encoderCounters()
+  // owns the one condition under which it means cw/ccw/btn, so this row never
+  // decides it for itself.
+  const enc = encoderCounters(rec);
   const showErr = hasStatus(rec, Status.ERR) && rec.errCode !== 0;
 
   return (

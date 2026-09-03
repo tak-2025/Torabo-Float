@@ -74,14 +74,14 @@ const THEMES: { id: ThemeId; name: string; bg: string; accent: string }[] = [
 
 interface FloatSettings {
   uiAlpha: number;
-  keyLayout: KeyLayout; // which legend faces to draw (default JIS)
+  keyLayout: KeyLayout; // which legend faces to draw (default US, as in Studio)
   theme: ThemeId; // key/pill color palette (default "pale")
   boardScale: BoardScale; // "auto" fit-to-window, or a percent 50–200
 }
 
 const DEFAULT_SETTINGS: FloatSettings = {
   uiAlpha: 1,
-  keyLayout: "jis",
+  keyLayout: "us",
   theme: "pale",
   boardScale: "auto",
 };
@@ -104,7 +104,7 @@ function loadSettings(): FloatSettings {
     const parsed = JSON.parse(raw) as Partial<FloatSettings>;
     return {
       uiAlpha: clampAlpha(parsed.uiAlpha ?? 1),
-      keyLayout: parsed.keyLayout === "us" ? "us" : "jis",
+      keyLayout: parsed.keyLayout === "jis" ? "jis" : "us",
       theme: THEME_IDS.includes(parsed.theme as ThemeId)
         ? (parsed.theme as ThemeId)
         : "pale",

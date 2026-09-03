@@ -676,16 +676,33 @@ select {
   border-color: var(--key-pressed-border);
   box-shadow: var(--key-pressed-shadow);
 }
+/* Behaviors that do nothing of their own — &trans falls through to the layer
+   below, &none swallows the press — are the background of a layer, not part of
+   what it does, so the eye should skip them. Expressed as alpha rather than a
+   new palette entry so it follows every theme's --key-* colours (and, in the
+   OBS overlay, simply lets more desktop through). A live press wins: Key.tsx
+   never applies this together with .key-pressed. */
+.key-muted {
+  opacity: 0.42;
+  box-shadow: none;
+}
+/* Pinned to both edges rather than centred on a point, so a long header — a
+   behavior short name plus the hold half's label, e.g. "LT 記号" — is clipped by
+   the key instead of spilling over its neighbours. */
 .key-header {
   position: absolute;
   top: 2px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  padding: 0 2px;
   font-size: 8px;
   line-height: 1;
   font-weight: 500;
   opacity: 0.7;
+  text-align: center;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: inherit;
 }
 .key-body {
@@ -723,4 +740,16 @@ select {
   opacity: 0.65;
   margin-left: 1px;
   vertical-align: super;
+}
+/* A face that is not a glyph: a layer name, a Bluetooth command. A size down so
+   a long name still fits, and pre-line so a two-line short form renders as two
+   lines — "CLR / SEL" vs "CLR / ALL" is the only thing telling the two
+   Bluetooth clear commands apart at this size. */
+.key-face-text {
+  display: block;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  white-space: pre-line;
 }

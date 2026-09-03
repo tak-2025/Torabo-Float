@@ -107,7 +107,13 @@ async function fetchBehaviorsOnce(
     });
     const dets = detailResp?.behaviors?.getBehaviorDetails;
     if (dets) {
-      map[dets.id] = { id: dets.id, displayName: dets.displayName };
+      // Keep the parameter metadata, not just the name: the board reads it to
+      // work out what each binding does (keyboard/binding-face.ts).
+      map[dets.id] = {
+        id: dets.id,
+        displayName: dets.displayName,
+        metadata: dets.metadata,
+      };
     } else {
       // A missing detail means the exchange was disrupted; retry the whole set.
       console.warn(

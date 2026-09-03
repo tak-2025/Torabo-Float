@@ -1,14 +1,19 @@
 {
     "Key Press": {"short": ""},
+    "Bluetooth": {"short": "BT"},
     "Bootloader": {"short": "Bootloadr"},
+    "Dynamic Macro": {"short": "DMac"},
     "External Power": {"short": "Ext Pwr"},
     "Grave/Escape": {"short": "Grv/Esc"},
     "Key Repeat": {"short": "Key Rept"},
     "Key Toggle": {"short": "Key Togg"},
+    "Layer-Tap": {"short": "LT"},
+    "Mod-Tap": {"short": "MT"},
     "Momentary Layer": {"short": "MLayer"},
-    "Output Selection": {"short": "OutputSel"},
+    "Output Selection": {"short": "Out"},
     "Sticky Key": {"short": "Stcky Key"},
     "Studio Unlock": {"short": "Unlock"},
-    "Toggle Layer": {"short": "Togg Layr"},
+    "To Layer": {"short": "To"},
+    "Toggle Layer": {"short": "Togg"},
     "Transparent": {"short": "Transprnt"}
 }

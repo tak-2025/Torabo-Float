@@ -43,7 +43,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: "pale",
-  legend: "jis",
+  legend: "us",
   scale: "auto",
   opacity: 100,
   chrome: true,

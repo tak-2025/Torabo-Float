@@ -74,10 +74,20 @@ export function useLiveFeed(
       });
     };
 
+    // A frame the firmware sent must never be able to stop the feed. decode* is
+    // total (it returns null instead of throwing — see liveFeed.ts's
+    // forward-compat contract, live_feed.h:14), and this guard covers the rest
+    // of the path: a render/state error raised by applyEvent would otherwise
+    // escape into Tauri's event dispatch with the subscription still delivering
+    // into a broken listener.
     track(
       listen<number[]>("live_feed_event", (ev) => {
-        const decoded = decodeLiveFeed(ev.payload);
-        if (decoded) applyEvent(decoded);
+        try {
+          const decoded = decodeLiveFeed(ev.payload);
+          if (decoded) applyEvent(decoded);
+        } catch (e) {
+          console.error("[live_feed] dropping a frame that failed to apply", e);
+        }
       })
     );
 

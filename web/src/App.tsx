@@ -220,7 +220,11 @@ export function App() {
         const activeLayout = snap ? snap.activeLayout : layer.activeLayout;
         const result = await syncKeymap(
           { keymapCrc, activeLayout },
-          setSyncStage
+          setSyncStage,
+          // Kept on screen after the stage text clears: over BLE this number is
+          // the difference between "works" and "unusable", and it is worth
+          // seeing without opening a console.
+          setSyncNote
         );
         setCache(result);
         setStale(false);
