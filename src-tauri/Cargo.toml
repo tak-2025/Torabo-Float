@@ -1,6 +1,6 @@
 [package]
 name = "torabo-float"
-version = "0.1.0"
+version = "0.1.1"
 description = "Torabo Float - live key/layer visualizer"
 authors = ["tak-2025"]
 license = ""

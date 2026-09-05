@@ -8,7 +8,7 @@
   },
   "productName": "Torabo Float",
   "mainBinaryName": "torabo-float",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "io.github.tak-2025.torabo-float",
   "bundle": {
     "active": true,
