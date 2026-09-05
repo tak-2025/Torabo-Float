@@ -25,6 +25,8 @@ export default defineConfig({
   // only outDir needs setting explicitly here.
   plugins: [react(), viteSingleFile()],
   resolve: {
+    // Same reason as vite.config.ts's dedupe — see the comment there.
+    dedupe: ["react", "react-dom"],
     alias: {
       "@shared": fileURLToPath(new URL("../shared", import.meta.url)),
       "~": fileURLToPath(new URL("./src", import.meta.url)),

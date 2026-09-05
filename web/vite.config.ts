@@ -6,6 +6,17 @@ import react from "@vitejs/plugin-react-swc";
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    // ../shared is OUTSIDE this project, so its `import "react"` resolves by
+    // walking up from ../shared — which on a checkout that also has the
+    // desktop app's dependencies installed finds ../node_modules/react, not
+    // web/node_modules/react. Rollup then bundles BOTH copies and the page
+    // dies on the first hook ("Cannot read properties of null (reading
+    // 'useState')" — react-dom primes one copy's dispatcher, shared/'s
+    // components read the other's). Dev never showed it (the dep optimiser
+    // already collapses them) and neither does CI (it installs web/ only, so
+    // there is no second copy to find), which is exactly why this needs
+    // pinning down rather than leaving to resolution order.
+    dedupe: ["react", "react-dom"],
     alias: {
       // Code kept byte-identical with the desktop build (../src) — see
       // ../shared and ../docs/DESIGN-web.md.
