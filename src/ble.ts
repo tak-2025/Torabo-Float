@@ -99,3 +99,16 @@ export function dmacRead(): Promise<number[]> {
   return invoke<number[]>("dmac_read");
 }
 
+/**
+ * One-shot read of the capability descriptor (raw bytes; BLE char e1f4a001 or
+ * USB tunnel feature 0x00 — see src-tauri/src/transport/caps.rs). Decoded by
+ * the translated shared/caps/toraboCaps.ts (via shared/keymap/declaredModules.ts)
+ * into the moduleSlots/centralSide keymap/sync.ts caches for the diagnostics
+ * panel's declared-connector labels (shared/diagLayout.ts). Best-effort by
+ * design, same contract as dmacRead: an old firmware without the capability
+ * service rejects the invoke, and callers must treat that (and any other
+ * failure) as "no declared placement available", never as a sync failure.
+ */
+export function capsRead(): Promise<number[]> {
+  return invoke<number[]>("caps_read");
+}

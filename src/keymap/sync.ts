@@ -12,8 +12,9 @@
 // nothing.
 import { call_rpc } from "../rpc/logging";
 import { openRpc } from "../rpc/connect";
-import { dmacRead } from "../ble";
+import { capsRead, dmacRead } from "../ble";
 import { decodeMacroNames } from "@shared/keymap/macroNames";
+import { decodeDeclaredModules } from "@shared/keymap/declaredModules";
 import {
   CACHE_VERSION,
   CachedBehavior,
@@ -72,6 +73,9 @@ export async function syncKeymap(snapshot: SyncSnapshot): Promise<CachedKeymap> 
     // --- Macro names (optional; outside the RPC session — see below) ---
     const macroNames = await readMacroNames();
 
+    // --- Declared module placement (optional; same treatment) ---
+    const declared = await readDeclaredModules();
+
     return {
       version: CACHE_VERSION,
       layouts,
@@ -79,6 +83,8 @@ export async function syncKeymap(snapshot: SyncSnapshot): Promise<CachedKeymap> 
       layers: keymap.layers,
       behaviors,
       macroNames,
+      moduleSlots: declared?.moduleSlots ?? null,
+      centralSide: declared?.centralSide ?? null,
       keymapCrc: snapshot.keymapCrc >>> 0,
       activeLayout: snapshot.activeLayout,
       syncedAt: Date.now(),
@@ -110,6 +116,23 @@ async function readMacroNames(): Promise<(string | null)[] | null> {
     return decodeMacroNames(Uint8Array.from(raw));
   } catch (e) {
     console.warn("[sync] macro name read failed (non-fatal)", e);
+    return null;
+  }
+}
+
+/**
+ * Best-effort read of the capability descriptor, for the diagnostics panel's
+ * declared-connector labels (shared/diagLayout.ts, fed via
+ * shared/keymap/declaredModules.ts). Same placement and same NEVER-throws
+ * contract as readMacroNames just above — see that function's comment; the
+ * only difference is which characteristic/tunnel feature is read.
+ */
+async function readDeclaredModules() {
+  try {
+    const raw = await capsRead();
+    return decodeDeclaredModules(Uint8Array.from(raw));
+  } catch (e) {
+    console.warn("[sync] capability descriptor read failed (non-fatal)", e);
     return null;
   }
 }

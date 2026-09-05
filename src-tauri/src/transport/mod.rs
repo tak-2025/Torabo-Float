@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod caps;
 pub mod commands;
 pub mod diag;
 pub mod dmac;

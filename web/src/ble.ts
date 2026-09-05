@@ -29,6 +29,12 @@ export const RPC_CHAR = "00000001-0196-6107-c967-c5cfb1c2482a";
 // live_feed / RPC discovery the rest of this module depends on.
 export const DM_SERVICE = "e1f4aa00-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
 export const DM_CHAR = "e1f4aa01-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
+// Capability descriptor (verbatim from src-tauri/src/transport/caps.rs). Same
+// "optional, looked up on demand" treatment as DM_SERVICE above — an old
+// firmware simply lacks this service, and that must never affect live_feed /
+// RPC discovery.
+export const CAPS_SERVICE = "e1f4a000-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
+export const CAPS_CHAR = "e1f4a001-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
 
 /** Max bytes per RPC write. 20 = the guaranteed-safe ATT payload at MTU 23. */
 const RPC_CHUNK = 20;
@@ -158,10 +164,10 @@ export async function requestAndConnect(
       "このブラウザは Web Bluetooth に対応していません（Chrome / Edge のデスクトップ版が必要です）"
     );
   }
-  // DM_SERVICE must be listed here (not just referenced later) — Web
-  // Bluetooth blocks getPrimaryService() for anything the requestDevice()
-  // call didn't declare, even after a successful connect.
-  const optionalServices = [LIVE_FEED_SERVICE, RPC_SERVICE, DM_SERVICE];
+  // DM_SERVICE / CAPS_SERVICE must be listed here (not just referenced later)
+  // — Web Bluetooth blocks getPrimaryService() for anything the
+  // requestDevice() call didn't declare, even after a successful connect.
+  const optionalServices = [LIVE_FEED_SERVICE, RPC_SERVICE, DM_SERVICE, CAPS_SERVICE];
   const device = await navigator.bluetooth.requestDevice(
     options.allDevices
       ? { acceptAllDevices: true, optionalServices }
@@ -550,6 +556,30 @@ export async function dmacRead(): Promise<number[]> {
     svc.getCharacteristic(DM_CHAR)
   );
   return toNumbers(await gattOp("dmac read", () => chr.readValue()));
+}
+
+// --- capability descriptor (e1f4a000) — best effort, for diag connector labels
+
+/**
+ * One-shot READ of the capability descriptor. Best-effort by design, same
+ * treatment as dmacRead: the caller (keymap/sync.ts) treats any rejection —
+ * old firmware without the service, a mid-connection drop, whatever — as "no
+ * declared placement this time", never as a sync failure. See
+ * shared/keymap/declaredModules.ts for the decode step and
+ * shared/diagLayout.ts for what consumes it.
+ *
+ * Looked up on demand, not cached on `active`, for the same reason dmacRead
+ * is: this read happens at most once per sync, off the connect-time hot path.
+ */
+export async function capsRead(): Promise<number[]> {
+  const { server } = requireActive();
+  const svc = await gattOp("discover caps service", () =>
+    server.getPrimaryService(CAPS_SERVICE)
+  );
+  const chr = await gattOp("discover caps char", () =>
+    svc.getCharacteristic(CAPS_CHAR)
+  );
+  return toNumbers(await gattOp("caps read", () => chr.readValue()));
 }
 
 /** Stop forwarding RPC notifications (best effort; link may already be gone). */

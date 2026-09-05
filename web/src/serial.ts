@@ -61,6 +61,11 @@ const FEATURE_LIVE_FEED = 0x0f;
  * src-tauri/src/transport/tunnel.rs's FEATURE_MACROS and torabo-studio's
  * TunnelFeature.Macros. */
 const FEATURE_MACROS = 0x0a;
+/** caps. READ answers with the same wire the e1f4a001 GATT char carries (the
+ * capability descriptor — see shared/caps/toraboCaps.ts). Matches
+ * src-tauri/src/transport/tunnel.rs's FEATURE_CAPS and torabo-studio's
+ * TunnelFeature.Caps: id 0x00. */
+const FEATURE_CAPS = 0x00;
 
 /**
  * The live_feed wire, as this router needs to know it (FW live_feed.h).
@@ -762,6 +767,19 @@ export async function diagSetStreaming(on: boolean): Promise<boolean> {
  */
 export async function dmacRead(): Promise<number[]> {
   return tunnelCall(FEATURE_MACROS, OP_READ);
+}
+
+// --- capability descriptor ---------------------------------------------------
+
+/**
+ * READ(0x00) — the whole capability descriptor, unfiltered (same shape as the
+ * dmacRead call above; this feature carries nothing but the descriptor, so
+ * there is no record-type split to do here). Best-effort: keymap/sync.ts
+ * swallows any rejection (old firmware, tunnel timeout) as "no declared
+ * placement this time" — see shared/keymap/declaredModules.ts.
+ */
+export async function capsRead(): Promise<number[]> {
+  return tunnelCall(FEATURE_CAPS, OP_READ);
 }
 
 // --- ZMK Studio RPC ---------------------------------------------------------

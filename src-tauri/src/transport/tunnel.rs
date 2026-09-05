@@ -70,6 +70,13 @@ pub const FEATURE_LIVE_FEED: u32 = 0x0F;
 /// deliberately mirror each GATT service's UUID low byte.
 pub const FEATURE_MACROS: u32 = 0x0A;
 
+/// `caps`. READ answers with the same wire the `e1f4a001` GATT characteristic
+/// carries (the capability descriptor — see shared/caps/toraboCaps.ts and
+/// caps.rs). Matches torabo-studio's TunnelFeature.Caps
+/// (src/backends/rpc/config.ts): id 0x00, same "mirrors the GATT service's
+/// UUID low byte" convention as FEATURE_MACROS above.
+pub const FEATURE_CAPS: u32 = 0x00;
+
 // --- framing ---------------------------------------------------------------
 
 /// Wrap a protobuf message in one SoF/ESC/EOF frame.

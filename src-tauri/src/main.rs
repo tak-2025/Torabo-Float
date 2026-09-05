@@ -5,6 +5,7 @@ use futures::lock::Mutex;
 
 mod transport;
 use transport::cache::{cache_read, cache_write};
+use transport::caps::caps_read;
 use transport::commands::{transport_close, transport_send_data, ActiveConnection};
 use transport::diag::{diag_read_snapshot, diag_set_streaming, diag_subscribe};
 use transport::dmac::dmac_read;
@@ -33,6 +34,7 @@ fn main() {
             diag_read_snapshot,
             diag_set_streaming,
             dmac_read,
+            caps_read,
             cache_read,
             cache_write,
         ])

@@ -133,6 +133,18 @@ export function dmacRead(): Promise<number[]> {
   return activeTransport === "usb" ? serial.dmacRead() : ble.dmacRead();
 }
 
+// --- capability descriptor (diag connector labels) --------------------------
+
+/**
+ * One-shot READ of the capability descriptor (see
+ * shared/keymap/declaredModules.ts). Best-effort, same contract as
+ * dmacRead: keymap/sync.ts swallows any rejection — macro-name-shaped
+ * treatment, but for Feature.Modules' declared connector placement instead.
+ */
+export function capsRead(): Promise<number[]> {
+  return activeTransport === "usb" ? serial.capsRead() : ble.capsRead();
+}
+
 // --- ZMK Studio RPC ---------------------------------------------------------
 
 export function rpcAvailable(): boolean {

@@ -14,11 +14,30 @@
 // board for the rest of the session.
 import { CACHE_VERSION, READABLE_VERSIONS } from "@shared/keymap/types";
 import type { CachedBehavior, CachedKeymap } from "@shared/keymap/types";
+import type { ModuleSlots } from "@shared/caps/toraboCaps";
 
 export { CACHE_VERSION };
 export type { CachedBehavior, CachedKeymap };
 
 const CACHE_KEY = "torabo-float-keymap-cache";
+
+/** Structural check for CachedKeymap.moduleSlots — four numeric nibbles.
+ * Route B feeds parseCachedKeymap arbitrary user-chosen files, and this field
+ * is optional data (shared/diagLayout.ts already treats a missing/invalid
+ * value the same as "nothing declared"), so a malformed value here is simply
+ * dropped to null rather than raising an error the way a missing `layouts` /
+ * `layers` does — losing a diag-panel label is not worth failing an entire
+ * import over. */
+function isModuleSlots(v: unknown): v is ModuleSlots {
+  if (!v || typeof v !== "object") return false;
+  const s = v as Record<string, unknown>;
+  return (
+    typeof s.leftStd === "number" &&
+    typeof s.leftExt === "number" &&
+    typeof s.rightStd === "number" &&
+    typeof s.rightExt === "number"
+  );
+}
 
 /**
  * Structural validation of a parsed cache blob. Route B feeds this arbitrary
@@ -61,6 +80,13 @@ export function parseCachedKeymap(raw: string): CachedKeymap {
     // file at all) — either way `null` is the right answer: FloatBoard.tsx /
     // binding-face.ts already draw M<N> for it.
     macroNames: Array.isArray(c.macroNames) ? c.macroNames : null,
+    // Same "absent on any cache written before this field existed, or a
+    // converted Studio backup (no capability descriptor in a backup file at
+    // all)" reasoning as macroNames above — null is the right answer either
+    // way, and shared/diagLayout.ts already renders identically to before
+    // this field existed when it is null.
+    moduleSlots: isModuleSlots(c.moduleSlots) ? c.moduleSlots : null,
+    centralSide: typeof c.centralSide === "number" ? c.centralSide : null,
     keymapCrc: (c.keymapCrc ?? 0) >>> 0,
     activeLayout: c.activeLayout ?? 0,
     syncedAt: c.syncedAt ?? Date.now(),

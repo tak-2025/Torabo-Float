@@ -881,7 +881,7 @@ export function App() {
             importNote={importNote}
           />
         ) : view === "diag" ? (
-          <DiagPanel connected={conn === "connected"} />
+          <DiagPanel connected={conn === "connected"} cache={cache} />
         ) : view === "debug" ? (
           <DebugLog log={log} layer={layer} />
         ) : pip ? (

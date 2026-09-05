@@ -13,8 +13,9 @@
 // outside the RPC session) rides along at the end — see readMacroNames.
 import { call_rpc } from "../rpc/logging";
 import { openRpc } from "../rpc/connect";
-import { dmacRead } from "../link";
+import { capsRead, dmacRead } from "../link";
 import { decodeMacroNames } from "@shared/keymap/macroNames";
+import { decodeDeclaredModules } from "@shared/keymap/declaredModules";
 import {
   CACHE_VERSION,
   CachedBehavior,
@@ -114,6 +115,11 @@ export async function syncKeymap(
     const macroNames = await readMacroNames();
     leg(macroNames ? `マクロ名 ${macroNames.filter((n) => n).length} 件` : "マクロ名 なし");
 
+    // --- Declared module placement (optional; same treatment) ---
+    progress("モジュール構成を取得中…");
+    const declared = await readDeclaredModules();
+    leg(declared ? "モジュール構成 あり" : "モジュール構成 なし");
+
     onTiming(`同期 ${elapsed().toFixed(1)}秒（${legs.join(" / ")}）`);
 
     return {
@@ -123,6 +129,8 @@ export async function syncKeymap(
       layers: keymap.layers,
       behaviors,
       macroNames,
+      moduleSlots: declared?.moduleSlots ?? null,
+      centralSide: declared?.centralSide ?? null,
       keymapCrc: snapshot.keymapCrc >>> 0,
       activeLayout: snapshot.activeLayout,
       syncedAt: Date.now(),
@@ -154,6 +162,23 @@ async function readMacroNames(): Promise<(string | null)[] | null> {
     return decodeMacroNames(Uint8Array.from(raw));
   } catch (e) {
     console.warn("[sync] macro name read failed (non-fatal)", e);
+    return null;
+  }
+}
+
+/**
+ * Best-effort read of the capability descriptor, for the diagnostics panel's
+ * declared-connector labels (shared/diagLayout.ts, fed via
+ * shared/keymap/declaredModules.ts). Same placement and same NEVER-throws
+ * contract as readMacroNames just above — see that function's comment; the
+ * only difference is which characteristic/tunnel feature is read.
+ */
+async function readDeclaredModules() {
+  try {
+    const raw = await capsRead();
+    return decodeDeclaredModules(Uint8Array.from(raw));
+  } catch (e) {
+    console.warn("[sync] capability descriptor read failed (non-fatal)", e);
     return null;
   }
 }

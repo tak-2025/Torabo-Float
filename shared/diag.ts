@@ -258,13 +258,45 @@ export interface DiagChip {
 }
 
 /**
+ * The chip for a row the firmware CANNOT PROBE — as opposed to one it probed
+ * and found empty.
+ *
+ * ⚪ 非搭載 is a firmware answer: `PRESENT` clear means live_feed looked and
+ * there was nothing there. For a declared hi-res dial that reading is wrong,
+ * because live_feed never looks: the dial (sekigon,hires-dial) has no diag
+ * hook at all, and the one row it could ride — diag_devs[]'s encoder
+ * pseudo-device — reports through `enc_diag_get()`, which is `__weak` and
+ * returns false whenever the encoder module is not linked. So a board that
+ * declares a dial produces a row with every status bit clear no matter how
+ * well the dial works, and calling that 非搭載 contradicts the descriptor
+ * shown right next to it ("左標準: 高分解能ダイヤル").
+ *
+ * Kept at health "absent" deliberately: the two states share a meaning for
+ * the reader ("no positive sign of life here") and therefore share the same
+ * muted styling — only the wording and the icon distinguish "we looked and
+ * found nothing" from "we cannot look". See diagLayout.ts's
+ * isUndetectableDialRow for the one condition that selects this chip.
+ */
+export const UNDETECTABLE_CHIP: DiagChip = {
+  health: "absent",
+  icon: "○",
+  label: "検知不可",
+};
+
+/**
  * Derive the status chip from the status bits.
  *
  * Split-slot (PERIPHERAL bit) rows: the central cannot probe the remote
  * driver, so INIT_OK is never set for them — judging by INIT_OK would wrongly
  * show 🔴 init FAIL. Judge by the relayed event stream instead (never 🔴):
- *   🟢 OK（推定）             EVENT_SEEN
- *   🟡 イベント未受信（推定）  !EVENT_SEEN
+ *   🟢 OK              EVENT_SEEN
+ *   🟡 イベント未受信   !EVENT_SEEN
+ * These two once carried a （推定） suffix, on the reasoning that a relayed
+ * event stream is weaker evidence than a direct probe. It is gone for the
+ * reason the badge is gone everywhere in this panel (DiagPanel.tsx's header):
+ * nothing here is auto-detected, so grading the app's own confidence gave the
+ * reader a distinction they cannot act on. Both wordings already describe what
+ * was actually observed — events arrived, or they did not.
  *
  * Local (non-PERIPHERAL) rows keep the direct-probe logic:
  *   🟢 OK        PRESENT && INIT_OK
@@ -281,8 +313,8 @@ export function diagChip(rec: DiagRecord): DiagChip {
 
   if (hasStatus(rec, Status.PERIPHERAL)) {
     return eventSeen
-      ? { health: "ok", icon: "🟢", label: "OK（推定）" }
-      : { health: "idle", icon: "🟡", label: "イベント未受信（推定）" };
+      ? { health: "ok", icon: "🟢", label: "OK" }
+      : { health: "idle", icon: "🟡", label: "イベント未受信" };
   }
 
   if (!present) {

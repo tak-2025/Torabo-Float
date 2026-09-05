@@ -593,7 +593,7 @@ export function App() {
 
       <main className="body">
         {view === "diag" ? (
-          <DiagPanel connected={conn === "connected"} />
+          <DiagPanel connected={conn === "connected"} cache={cache} />
         ) : view === "debug" ? (
           <DebugLog log={log} layer={layer} />
         ) : cache ? (

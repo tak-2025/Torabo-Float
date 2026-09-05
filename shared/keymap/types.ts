@@ -12,6 +12,7 @@ import type {
   PhysicalLayout,
   Layer,
 } from "@zmkfirmware/zmk-studio-ts-client/keymap";
+import type { CapsSide, ModuleSlots } from "../caps/toraboCaps";
 
 // 2: behaviors carry the firmware's parameter metadata, which the board needs to
 // know what a binding actually does (keyboard/binding-face.ts).
@@ -74,6 +75,37 @@ export interface CachedKeymap {
    * still parses (see CACHE_VERSION's comment on why that path is unused today).
    */
   macroNames?: (string | null)[] | null;
+  /**
+   * Feature.Modules' declared per-connector placement (id 11,
+   * shared/caps/toraboCaps.ts's moduleSlots — see that file's own header for
+   * the caps-side design) and, alongside it, which half the capability
+   * header's `_rsv` byte says is central (centralSideFromHeader). Read at
+   * sync time from the capability
+   * descriptor (GATT e1f4a001 / tunnel feature 0x00) via
+   * shared/keymap/declaredModules.ts, the same "best-effort, read alongside
+   * macroNames, never fails the sync" pattern — see that file and
+   * keymap/sync.ts's readDeclaredModules.
+   *
+   * Consumed by shared/diagLayout.ts to label diagnostics-panel rows with
+   * their declared connector ("左標準: エンコーダ") instead of a bare kind
+   * word or a generic peripheral slot number. Both null/absent together:
+   * old firmware, no MODULES row, or a failed read — diagLayout.ts already
+   * treats that the same as "nothing to say" and the panel falls back to
+   * its pre-declaration labels unchanged.
+   *
+   * Optional fields, NOT a CACHE_VERSION bump: unlike macroNames' 2->3 bump
+   * (which changed the SHAPE macros carry and was deliberately not
+   * grandfathered, see CACHE_VERSION's comment above), these two are a pure
+   * addition with a safe default (absent = "nothing declared", exactly
+   * what an old cache already means by never having the field at all) —
+   * every existing reader already treats absence correctly with no code
+   * change, so there is nothing a version bump would protect here. Both
+   * cache.ts read paths (Tauri's plain JSON.parse and the web's
+   * field-by-field parseCachedKeymap) must still parse an old cache that
+   * has neither field.
+   */
+  moduleSlots?: ModuleSlots | null;
+  centralSide?: CapsSide | null;
   // Snapshot values captured from the live_feed at sync time.
   keymapCrc: number;
   activeLayout: number;
