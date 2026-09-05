@@ -1,10 +1,25 @@
 // Diagnostics panel — a "live wiring checker" fed by the af02 diag channel.
 //
-// Toggled from the header (see App.tsx). While mounted it drives useDiag, which
-// subscribes to af02, turns the FW heartbeat sweep on, seeds from a READ, and
-// turns the sweep off on unmount. Each known device gets a row with a dynamic
-// label, a health chip, last-seen freshness, event_count / err_code, and — for
-// encoders — the live cw/ccw/btn counters decoded from `detail`.
+// Toggled from the header (see App.tsx). While mounted AND connected it drives
+// useDiag, which subscribes to af02, turns the FW heartbeat sweep on, seeds
+// from a READ, and turns the sweep off again when either of those stops being
+// true. Each known device gets a row with a dynamic label, a health chip,
+// last-seen freshness, event_count / err_code, and — for encoders — the live
+// cw/ccw/btn counters decoded from `detail`.
+//
+// `connected` — NOT a bare `true` — is what useDiag is driven by, and that is
+// load-bearing rather than tidiness. Everything useDiag does at subscribe time
+// is bound to ONE link: af02's CCC subscription, the heartbeat-ON write, and
+// the seeding READ all die with the GATT connection that carried them (over
+// Web Bluetooth the characteristic objects themselves are invalidated). Keying
+// the hook on the panel being open alone ran that sequence exactly once, on
+// mount, so a panel that was open across a drop/reconnect — or opened before
+// the link came up — never re-subscribed: `connection_disconnected` emptied
+// the record map and nothing ever refilled it, leaving the panel stuck on
+// 「診断データを待機中…」 (or, for the open-then-connect order, on the
+// unsupported-firmware notice from a subscribe that failed only because there
+// was no link yet) for the rest of the session. Passing the link state makes
+// each connection its own subscribe/teardown cycle.
 import {
   DiagRecord,
   Status,
@@ -17,7 +32,7 @@ import {
 import { useDiag } from "./hooks/useDiag";
 
 export function DiagPanel({ connected }: { connected: boolean }) {
-  const { supported, records, nowTickMs } = useDiag(true);
+  const { supported, records, nowTickMs } = useDiag(connected);
 
   return (
     <div className="diag">

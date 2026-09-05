@@ -185,6 +185,46 @@ function isNotFound(e: unknown): boolean {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// --- GATT operation serialization -------------------------------------------
+//
+// Chrome runs ONE GATT operation at a time per device. A second
+// startNotifications / readValue / writeValue / getPrimaryService issued while
+// another is still in flight does not queue — it rejects outright with
+// `NetworkError: GATT operation already in progress.`
+//
+// Nothing above the transport coordinates its callers, and that is deliberate
+// (link.ts exists so App.tsx, the hooks and the RPC layer never branch on the
+// transport). But it means several independent callers share one link: the RPC
+// keymap sync, the live-feed subscribe, the diagnostics panel's
+// subscribe/heartbeat/READ sequence, and the best-effort dmac / caps reads that
+// ride along at the end of a sync. React StrictMode adds one more by mounting
+// every effect twice in dev. The diagnostics panel was the visible casualty —
+// its af02 heartbeat WRITE and seeding READ both lost that race, so the
+// firmware's heartbeat sweep was never switched on and no snapshot ever
+// arrived, leaving the panel on 「診断データを待機中…」 with a subscription that
+// had itself succeeded. The desktop build never showed it because its Rust
+// transport serializes on the `bluest` side.
+//
+// So every GATT call in this module goes through one FIFO. Callers keep their
+// own rejections; the tail swallows them so one failure cannot wedge the queue.
+let gattTail: Promise<unknown> = Promise.resolve();
+let gattPending = 0;
+
+function gattOp<T>(label: string, op: () => Promise<T>): Promise<T> {
+  // Only logged when something actually has to wait: that line is the evidence
+  // for "two GATT operations were issued concurrently", which is otherwise only
+  // visible as a NetworkError from whichever caller lost.
+  if (gattPending > 0) {
+    console.info(`[ble] gatt queue: ${label} waiting behind ${gattPending}`);
+  }
+  gattPending++;
+  const run = gattTail.then(op, op).finally(() => {
+    gattPending--;
+  });
+  gattTail = run.catch(() => {});
+  return run;
+}
+
 /**
  * live_feed（必須）と RPC（任意）を一度に探す。
  *
@@ -194,16 +234,26 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function discoverAll(
   server: BluetoothRemoteGATTServer
 ): Promise<Discovered> {
-  const svc = await server.getPrimaryService(LIVE_FEED_SERVICE);
-  const liveFeed = await svc.getCharacteristic(LIVE_FEED_CHAR);
+  const svc = await gattOp("discover live_feed service", () =>
+    server.getPrimaryService(LIVE_FEED_SERVICE)
+  );
+  const liveFeed = await gattOp("discover af01", () =>
+    svc.getCharacteristic(LIVE_FEED_CHAR)
+  );
   // af02 is optional (older firmware has no diag mode).
-  const diag = await svc.getCharacteristic(DIAG_CHAR).catch(() => null);
+  const diag = await gattOp("discover af02", () =>
+    svc.getCharacteristic(DIAG_CHAR)
+  ).catch(() => null);
 
   let rpc: BluetoothRemoteGATTCharacteristic | null = null;
   let rpcError: string | null = null;
   try {
-    const rpcSvc = await server.getPrimaryService(RPC_SERVICE);
-    rpc = await rpcSvc.getCharacteristic(RPC_CHAR);
+    const rpcSvc = await gattOp("discover RPC service", () =>
+      server.getPrimaryService(RPC_SERVICE)
+    );
+    rpc = await gattOp("discover RPC char", () =>
+      rpcSvc.getCharacteristic(RPC_CHAR)
+    );
   } catch (e) {
     rpcError = errText(e);
     console.warn("[ble] RPC service unavailable — keymap sync disabled", e);
@@ -348,7 +398,7 @@ export async function liveFeedSubscribe(): Promise<boolean> {
   if (!liveFeed) throw new Error("live_feed characteristic がありません");
   liveFeed.removeEventListener("characteristicvaluechanged", onLiveFeedValue);
   liveFeed.addEventListener("characteristicvaluechanged", onLiveFeedValue);
-  await liveFeed.startNotifications();
+  await gattOp("af01 startNotifications", () => liveFeed.startNotifications());
   return true;
 }
 
@@ -361,7 +411,7 @@ function onLiveFeedValue(ev: Event) {
 export async function liveFeedReadSnapshot(): Promise<number[]> {
   const { liveFeed } = requireActive();
   if (!liveFeed) throw new Error("live_feed characteristic がありません");
-  return toNumbers(await liveFeed.readValue());
+  return toNumbers(await gattOp("af01 read", () => liveFeed.readValue()));
 }
 
 // --- diag (af02) ------------------------------------------------------------
@@ -371,7 +421,7 @@ export async function diagSubscribe(): Promise<boolean> {
   if (!diag) throw new Error("diag characteristic がありません（旧 FW）");
   diag.removeEventListener("characteristicvaluechanged", onDiagValue);
   diag.addEventListener("characteristicvaluechanged", onDiagValue);
-  await diag.startNotifications();
+  await gattOp("af02 startNotifications", () => diag.startNotifications());
   return true;
 }
 
@@ -384,14 +434,16 @@ function onDiagValue(ev: Event) {
 export async function diagReadSnapshot(): Promise<number[]> {
   const { diag } = requireActive();
   if (!diag) throw new Error("diag characteristic がありません（旧 FW）");
-  return toNumbers(await diag.readValue());
+  return toNumbers(await gattOp("af02 read (snapshot)", () => diag.readValue()));
 }
 
 /** Toggle the diag heartbeat stream (WRITE 1=on / 0=off to af02). */
 export async function diagSetStreaming(on_: boolean): Promise<boolean> {
   const { diag } = requireActive();
   if (!diag) throw new Error("diag characteristic がありません（旧 FW）");
-  await diag.writeValue(new Uint8Array([on_ ? 1 : 0]));
+  await gattOp(`af02 write (heartbeat ${on_ ? "ON" : "OFF"})`, () =>
+    diag.writeValue(new Uint8Array([on_ ? 1 : 0]))
+  );
   return true;
 }
 
@@ -418,9 +470,10 @@ export async function rpcSubscribe(): Promise<boolean> {
   if (!conn.rpc) {
     throw new Error(conn.rpcError ?? "RPC サービスがありません");
   }
-  conn.rpc.removeEventListener("characteristicvaluechanged", onRpcValue);
-  conn.rpc.addEventListener("characteristicvaluechanged", onRpcValue);
-  await conn.rpc.startNotifications();
+  const rpc = conn.rpc;
+  rpc.removeEventListener("characteristicvaluechanged", onRpcValue);
+  rpc.addEventListener("characteristicvaluechanged", onRpcValue);
+  await gattOp("rpc startNotifications", () => rpc.startNotifications());
   return true;
 }
 
@@ -440,25 +493,31 @@ function onRpcValue(ev: Event) {
 export async function rpcSend(data: Uint8Array): Promise<void> {
   const conn = requireActive();
   if (!conn.rpc) throw new Error("RPC サービスがありません");
+  const rpc = conn.rpc;
   const total = Math.ceil(data.length / RPC_CHUNK);
-  for (let i = 0, n = 1; i < data.length; i += RPC_CHUNK, n++) {
-    const chunk = data.slice(i, i + RPC_CHUNK);
-    try {
-      // writeValueWithoutResponse is what the ZMK RPC char expects; fall back
-      // for implementations that only expose the legacy writeValue().
-      if (conn.rpc.writeValueWithoutResponse) {
-        await conn.rpc.writeValueWithoutResponse(chunk);
-      } else {
-        await conn.rpc.writeValue(chunk);
+  // The WHOLE frame is one queue slot, not one per chunk: a frame split across
+  // the wire has to arrive contiguously, so no other caller's GATT operation
+  // may be admitted between two of its chunks.
+  await gattOp(`rpc send ${data.length}B`, async () => {
+    for (let i = 0, n = 1; i < data.length; i += RPC_CHUNK, n++) {
+      const chunk = data.slice(i, i + RPC_CHUNK);
+      try {
+        // writeValueWithoutResponse is what the ZMK RPC char expects; fall back
+        // for implementations that only expose the legacy writeValue().
+        if (rpc.writeValueWithoutResponse) {
+          await rpc.writeValueWithoutResponse(chunk);
+        } else {
+          await rpc.writeValue(chunk);
+        }
+      } catch (e) {
+        throw new Error(
+          `RPC の送信に失敗しました（${n}/${total} 番目のチャンク, ${chunk.length} バイト）: ${errText(
+            e
+          )}`
+        );
       }
-    } catch (e) {
-      throw new Error(
-        `RPC の送信に失敗しました（${n}/${total} 番目のチャンク, ${chunk.length} バイト）: ${errText(
-          e
-        )}`
-      );
     }
-  }
+  });
 }
 
 /** Stop forwarding RPC notifications (best effort; link may already be gone). */
@@ -467,7 +526,7 @@ export async function rpcUnsubscribe(): Promise<void> {
   if (!rpc) return;
   rpc.removeEventListener("characteristicvaluechanged", onRpcValue);
   try {
-    await rpc.stopNotifications();
+    await gattOp("rpc stopNotifications", () => rpc.stopNotifications());
   } catch {
     /* link gone */
   }

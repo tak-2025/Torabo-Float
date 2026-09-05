@@ -27,7 +27,15 @@ import { bumpRpcActivity } from "./activity";
 
 export interface OpenRpc {
   conn: RpcConnection;
-  close: () => void;
+  /**
+   * Tear the RPC session down. AWAITABLE, and callers must await it before
+   * their next GATT access on this link (e.g. the macro-names /
+   * capability-descriptor reads in keymap/sync.ts) — see the implementation's
+   * comment: `rpcUnsubscribe()` is a real GATT operation (a CCC write) on BLE,
+   * and Chrome serializes GATT operations per device, so an unawaited close()
+   * can race the very next read issued after it.
+   */
+  close: () => Promise<void>;
   /**
    * The last GATT write failure, or null. Needed because ts-client swallows
    * transport errors: `writer.write()` only enqueues into a TransformStream, so
@@ -91,18 +99,26 @@ export async function openRpc(): Promise<OpenRpc> {
   // Drain notifications so the split readable never back-pressures during sync.
   drain(conn.notification_readable, abortController.signal);
 
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
+  let closing: Promise<void> | null = null;
+  const close = (): Promise<void> => {
+    if (closing) return closing;
     unlisten_data();
-    rpcUnsubscribe().catch(() => {});
+    // Awaited: rpcUnsubscribe() writes the RPC characteristic's CCC descriptor
+    // over BLE (a no-op over USB — see the file header), and Chrome only runs
+    // one GATT operation on a device at a time. Leaving this fire-and-forget
+    // let the caller's next read (macro names / capability descriptor, both
+    // issued right after close() in keymap/sync.ts) collide with it.
+    const unsubscribed = rpcUnsubscribe().catch(() => {
+      /* best-effort — link may already be gone */
+    });
     try {
       response_writable.close();
     } catch {
       /* already closed */
     }
     abortController.abort();
+    closing = unsubscribed;
+    return closing;
   };
 
   return { conn, close, lastWriteError: () => writeError };

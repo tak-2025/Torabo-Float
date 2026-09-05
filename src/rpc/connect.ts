@@ -26,7 +26,15 @@ import {
 
 export interface OpenRpc {
   conn: RpcConnection;
-  close: () => void;
+  /**
+   * Tear the RPC session down. Awaitable for parity with web/src/rpc/connect.ts
+   * (there, close() awaits a real GATT CCC write — rpcUnsubscribe() — before
+   * resolving, so callers must await it before their next link access). Here
+   * teardown is JS-local (unlisten_data + abort), so the await is a no-op, but
+   * keeping the same async shape lets keymap/sync.ts `await close()` on both
+   * targets without target-specific branching.
+   */
+  close: () => Promise<void>;
 }
 
 /** Open an RPC connection over the already-connected BLE link (from gatt_connect). */
@@ -68,7 +76,7 @@ export async function openRpc(): Promise<OpenRpc> {
   drain(conn.notification_readable, abortController.signal);
 
   let closed = false;
-  const close = () => {
+  const close = async (): Promise<void> => {
     if (closed) return;
     closed = true;
     unlisten_data();
