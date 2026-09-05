@@ -56,6 +56,11 @@ const STATUS_OK = 0;
 
 /** live_feed. Its blob is the same 16-byte record the af01 GATT char carries. */
 const FEATURE_LIVE_FEED = 0x0f;
+/** macros. READ answers with the same wire the e1f4aa01 GATT char carries
+ * (dm wire v1/v2 — see shared/dynamic_macros/dmacConfig.ts). Matches
+ * src-tauri/src/transport/tunnel.rs's FEATURE_MACROS and torabo-studio's
+ * TunnelFeature.Macros. */
+const FEATURE_MACROS = 0x0a;
 
 /**
  * The live_feed wire, as this router needs to know it (FW live_feed.h).
@@ -744,6 +749,19 @@ export async function diagReadSnapshot(): Promise<number[]> {
 export async function diagSetStreaming(on: boolean): Promise<boolean> {
   await tunnelCall(FEATURE_LIVE_FEED, OP_WRITE, [on ? 1 : 0]);
   return true;
+}
+
+// --- dynamic macros ----------------------------------------------------------
+
+/**
+ * READ(0x0A) — the whole dynamic-macro wire, unfiltered (unlike the live_feed
+ * reads above, this feature carries nothing but the macros blob, so there is
+ * no record-type split to do here). Best-effort: keymap/sync.ts swallows any
+ * rejection (old firmware, tunnel timeout) as "no names this time" — see
+ * shared/keymap/macroNames.ts.
+ */
+export async function dmacRead(): Promise<number[]> {
+  return tunnelCall(FEATURE_MACROS, OP_READ);
 }
 
 // --- ZMK Studio RPC ---------------------------------------------------------

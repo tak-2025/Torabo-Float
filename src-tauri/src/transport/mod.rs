@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod commands;
 pub mod diag;
+pub mod dmac;
 pub mod gatt;
 pub mod link;
 pub mod live_feed;

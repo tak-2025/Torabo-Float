@@ -86,3 +86,16 @@ export function diagReadSnapshot(): Promise<number[]> {
 export function diagSetStreaming(on: boolean): Promise<boolean> {
   return invoke<boolean>("diag_set_streaming", { on });
 }
+
+/**
+ * One-shot read of the dynamic-macro wire (raw bytes; BLE char e1f4aa01 or USB
+ * tunnel feature 0x0A — see src-tauri/src/transport/dmac.rs). Decoded by
+ * shared/keymap/macroNames.ts into the names keymap/sync.ts caches for
+ * &dmac keycaps. Best-effort by design: an old firmware without the macros
+ * service/feature rejects the invoke, and callers must treat that (and any
+ * other failure) as "no names available", never as a sync failure.
+ */
+export function dmacRead(): Promise<number[]> {
+  return invoke<number[]>("dmac_read");
+}
+

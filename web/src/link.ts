@@ -121,6 +121,18 @@ export function diagSetStreaming(on_: boolean): Promise<boolean> {
     : ble.diagSetStreaming(on_);
 }
 
+// --- dynamic macros (macro-name display) ------------------------------------
+
+/**
+ * One-shot READ of the dynamic-macro wire (see shared/keymap/macroNames.ts).
+ * Best-effort: keymap/sync.ts swallows any rejection (old firmware, absent
+ * service/feature, disconnected) — macro names are optional data layered on
+ * the existing M<N> keycap fallback, never a reason to fail a sync.
+ */
+export function dmacRead(): Promise<number[]> {
+  return activeTransport === "usb" ? serial.dmacRead() : ble.dmacRead();
+}
+
 // --- ZMK Studio RPC ---------------------------------------------------------
 
 export function rpcAvailable(): boolean {

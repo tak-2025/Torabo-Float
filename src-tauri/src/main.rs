@@ -7,6 +7,7 @@ mod transport;
 use transport::cache::{cache_read, cache_write};
 use transport::commands::{transport_close, transport_send_data, ActiveConnection};
 use transport::diag::{diag_read_snapshot, diag_set_streaming, diag_subscribe};
+use transport::dmac::dmac_read;
 use transport::gatt::{gatt_connect, gatt_list_devices};
 use transport::live_feed::{live_feed_read_snapshot, live_feed_subscribe};
 use transport::serial::{serial_connect, serial_list_ports};
@@ -31,6 +32,7 @@ fn main() {
             diag_subscribe,
             diag_read_snapshot,
             diag_set_streaming,
+            dmac_read,
             cache_read,
             cache_write,
         ])

@@ -23,6 +23,12 @@ export const LIVE_FEED_CHAR = "e1f4af01-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
 export const DIAG_CHAR = "e1f4af02-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
 export const RPC_SERVICE = "00000000-0196-6107-c967-c5cfb1c2482a";
 export const RPC_CHAR = "00000001-0196-6107-c967-c5cfb1c2482a";
+// Dynamic-macro wire (verbatim from src-tauri/src/transport/dmac.rs). Looked
+// up on demand by dmacRead() below, not during discoverAll — this service is
+// genuinely optional (older firmware) and its absence must never affect the
+// live_feed / RPC discovery the rest of this module depends on.
+export const DM_SERVICE = "e1f4aa00-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
+export const DM_CHAR = "e1f4aa01-1c2d-4b6e-9f3a-0a1b2c3d4e5f";
 
 /** Max bytes per RPC write. 20 = the guaranteed-safe ATT payload at MTU 23. */
 const RPC_CHUNK = 20;
@@ -152,7 +158,10 @@ export async function requestAndConnect(
       "このブラウザは Web Bluetooth に対応していません（Chrome / Edge のデスクトップ版が必要です）"
     );
   }
-  const optionalServices = [LIVE_FEED_SERVICE, RPC_SERVICE];
+  // DM_SERVICE must be listed here (not just referenced later) — Web
+  // Bluetooth blocks getPrimaryService() for anything the requestDevice()
+  // call didn't declare, even after a successful connect.
+  const optionalServices = [LIVE_FEED_SERVICE, RPC_SERVICE, DM_SERVICE];
   const device = await navigator.bluetooth.requestDevice(
     options.allDevices
       ? { acceptAllDevices: true, optionalServices }
@@ -518,6 +527,29 @@ export async function rpcSend(data: Uint8Array): Promise<void> {
       }
     }
   });
+}
+
+// --- dynamic macros (e1f4aa00) — best effort, for macro-name display -------
+
+/**
+ * One-shot READ of the dynamic-macro wire. Best-effort by design: the caller
+ * (keymap/sync.ts) treats any rejection here — old firmware without the
+ * service, a mid-connection drop, whatever — as "no names this time", never as
+ * a sync failure. See shared/keymap/macroNames.ts for the decode step.
+ *
+ * Looked up on demand (getPrimaryService/getCharacteristic here, not cached on
+ * `active` like liveFeed/diag/rpc) because this read happens at most once per
+ * sync, well off the connect-time hot path those three exist to keep fast.
+ */
+export async function dmacRead(): Promise<number[]> {
+  const { server } = requireActive();
+  const svc = await gattOp("discover dmac service", () =>
+    server.getPrimaryService(DM_SERVICE)
+  );
+  const chr = await gattOp("discover dmac char", () =>
+    svc.getCharacteristic(DM_CHAR)
+  );
+  return toNumbers(await gattOp("dmac read", () => chr.readValue()));
 }
 
 /** Stop forwarding RPC notifications (best effort; link may already be gone). */

@@ -55,6 +55,12 @@ export function parseCachedKeymap(raw: string): CachedKeymap {
     activeLayoutIndex: c.activeLayoutIndex ?? 0,
     layers: c.layers,
     behaviors: c.behaviors ?? {},
+    // Absent on any cache written before this field existed (CACHE_VERSION's
+    // comment in shared/keymap/types.ts explains why that path is unused
+    // today) and on a converted Studio backup (no macros wire in a backup
+    // file at all) — either way `null` is the right answer: FloatBoard.tsx /
+    // binding-face.ts already draw M<N> for it.
+    macroNames: Array.isArray(c.macroNames) ? c.macroNames : null,
     keymapCrc: (c.keymapCrc ?? 0) >>> 0,
     activeLayout: c.activeLayout ?? 0,
     syncedAt: c.syncedAt ?? Date.now(),

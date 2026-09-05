@@ -16,17 +16,26 @@ import type {
 // 2: behaviors carry the firmware's parameter metadata, which the board needs to
 // know what a binding actually does (keyboard/binding-face.ts).
 //
-// A version-1 cache is still READ, not discarded. It has no metadata, so the
-// board falls back to drawing param1 — exactly what this app did before v2, so
-// nothing gets worse — and the next sync fills the metadata in. Rejecting it
-// was the obvious move and the wrong one: a null cache makes App.tsx auto-sync
-// on connect, and a full keymap sync over BLE runs on 20-byte INDICATE round
-// trips, so it can take minutes or never finish. Nobody should lose a working
-// board to a cosmetic improvement.
-export const CACHE_VERSION = 2 as const;
+// A version-1 cache was still READ under v2, not discarded (see this file's
+// prior history) — the missing metadata degrades gracefully to the pre-v2
+// param1-as-usage face. Nothing got worse and the next sync filled it in.
+//
+// 3: adds macroNames — per-&dmac-slot names read off a v2-capable keyboard's
+// macros wire (dm wire v2, see shared/keymap/macroNames.ts for the decode step
+// and shared/dynamic_macros/dmacConfig.ts for the wire codec itself). Unlike
+// the 1->2 bump, this one is NOT grandfathered: READABLE_VERSIONS below drops
+// 1 and 2, so an older cache is discarded outright and the app resyncs on next
+// connect, rather than rendering with macroNames silently absent. The field
+// would in fact have parsed fine as `undefined` on an old cache (every &dmac
+// key would just keep showing M<N>, same as before this field existed) — the
+// plain discard here is a deliberate simplification for this bump, not a
+// technical necessity, so a later bump is free to grandfather again the way
+// 1->2 did if a forced resync ever turns out to cost real users something.
+export const CACHE_VERSION = 3 as const;
 
-/** Versions this app can render. Older ones simply lack metadata. */
-export const READABLE_VERSIONS: number[] = [1, 2];
+/** Versions this app can render; anything else is discarded by both cache.ts
+ * read paths (cacheRead / parseCachedKeymap), forcing a resync. */
+export const READABLE_VERSIONS: number[] = [3];
 
 export interface CachedBehavior {
   id: number;
@@ -53,6 +62,18 @@ export interface CachedKeymap {
   layers: Layer[];
   // behaviorId -> displayName (+ id), used for key headers.
   behaviors: Record<number, CachedBehavior>;
+  /**
+   * Per-slot &dmac names, indexed like DmConfig.slots (shared/dynamic_macros/
+   * dmacConfig.ts): `null` at an index means "no name to show" — covers both a
+   * v1 firmware's macros wire (no name block at all) and an explicitly unnamed
+   * v2 slot, since binding-face.ts's macroLabel draws the same `M<N>` fallback
+   * for either. The whole field is `null`/absent when no macros read has
+   * succeeded this sync (old firmware, no macros service/feature, a read
+   * error) — see shared/keymap/macroNames.ts, which is what turns a raw wire
+   * read into this shape. Optional so a cache from before this field existed
+   * still parses (see CACHE_VERSION's comment on why that path is unused today).
+   */
+  macroNames?: (string | null)[] | null;
   // Snapshot values captured from the live_feed at sync time.
   keymapCrc: number;
   activeLayout: number;

@@ -4,12 +4,16 @@
 // index AND every layout), keymap.getKeymap (layers with id/name/bindings), and
 // behaviors.listAllBehaviors + per-id getBehaviorDetails (with the retry loop
 // ported from Keyboard.tsx's useBehaviors — RPC is flaky under HID traffic).
+// A best-effort dynamic-macro names read (dmac_read, a plain BLE/USB transport
+// call outside the RPC session) rides along at the end — see readMacroNames.
 //
 // This keyboard runs CONFIG_ZMK_STUDIO_LOCKING=n so getKeymap works immediately;
 // we still surface a readable error rather than crashing if the RPC returns
 // nothing.
 import { call_rpc } from "../rpc/logging";
 import { openRpc } from "../rpc/connect";
+import { dmacRead } from "../ble";
+import { decodeMacroNames } from "@shared/keymap/macroNames";
 import {
   CACHE_VERSION,
   CachedBehavior,
@@ -30,6 +34,7 @@ export interface SyncSnapshot {
  * staleness can be detected later by comparing incoming live CRCs.
  *
  * Throws a readable Error on failure (locked / no RPC data / disconnected).
+ * The trailing macro-name read never throws this — see readMacroNames.
  */
 export async function syncKeymap(snapshot: SyncSnapshot): Promise<CachedKeymap> {
   const { conn, close } = await openRpc();
@@ -57,7 +62,15 @@ export async function syncKeymap(snapshot: SyncSnapshot): Promise<CachedKeymap> 
     // --- Behaviors (retry loop; RPC can be disrupted by HID traffic) ---
     const behaviors = await fetchBehaviors(conn);
 
-    close();
+    // Awaited: on the Web target close() must settle a real GATT CCC write
+    // before the next link access is safe (see rpc/connect.ts); the two reads
+    // below are that next access. Here on Tauri close() is JS-local and the
+    // await is a no-op, but the same `await close()` shape keeps both
+    // sync.ts files identical — see that file's comment.
+    await close();
+
+    // --- Macro names (optional; outside the RPC session — see below) ---
+    const macroNames = await readMacroNames();
 
     return {
       version: CACHE_VERSION,
@@ -65,13 +78,39 @@ export async function syncKeymap(snapshot: SyncSnapshot): Promise<CachedKeymap> 
       activeLayoutIndex,
       layers: keymap.layers,
       behaviors,
+      macroNames,
       keymapCrc: snapshot.keymapCrc >>> 0,
       activeLayout: snapshot.activeLayout,
       syncedAt: Date.now(),
     };
   } catch (e) {
-    close();
+    await close();
     throw e instanceof Error ? e : new Error(String(e));
+  }
+}
+
+/**
+ * Best-effort read of the dynamic-macro wire, for the names shown on `&dmac`
+ * keycaps (shared/keyboard/binding-face.ts's macroLabel, fed via FloatBoard.tsx
+ * / shared/keymap/macroNames.ts). Called after `close()` releases the RPC
+ * session: dmac_read talks to a separate GATT characteristic (BLE) or the same
+ * tunnel byte stream via its own request/response pair (USB), so it needs the
+ * link, not the RPC session, and closing the latter first keeps the two from
+ * racing on the connection's write path.
+ *
+ * NEVER throws: a keyboard running firmware older than the macros
+ * service/tunnel feature, a v1 (name-less) wire, a length that doesn't match
+ * DM_WIRE_LENS, or any transport error, all just mean "no names this time" —
+ * see this file's header comment and shared/keymap/macroNames.ts. A keymap
+ * sync must not fail over data the firmware might not even have.
+ */
+async function readMacroNames(): Promise<(string | null)[] | null> {
+  try {
+    const raw = await dmacRead();
+    return decodeMacroNames(Uint8Array.from(raw));
+  } catch (e) {
+    console.warn("[sync] macro name read failed (non-fatal)", e);
+    return null;
   }
 }
 

@@ -8,8 +8,13 @@
 // This keyboard runs CONFIG_ZMK_STUDIO_LOCKING=n so getKeymap works immediately;
 // we still surface a readable error rather than crashing if the RPC returns
 // nothing.
+//
+// A best-effort dynamic-macro names read (dmacRead, a plain transport call
+// outside the RPC session) rides along at the end — see readMacroNames.
 import { call_rpc } from "../rpc/logging";
 import { openRpc } from "../rpc/connect";
+import { dmacRead } from "../link";
+import { decodeMacroNames } from "@shared/keymap/macroNames";
 import {
   CACHE_VERSION,
   CachedBehavior,
@@ -98,7 +103,17 @@ export async function syncKeymap(
     const behaviors = await fetchBehaviors(conn, progress);
     leg(`ビヘイビア ${Object.keys(behaviors).length} 件`);
 
-    close();
+    // Awaited: close() writes the RPC characteristic's CCC descriptor (a real
+    // GATT operation), and Chrome serializes GATT operations per device — the
+    // two reads below are the next such operations on this link, so they must
+    // not start until the unsubscribe has settled. See rpc/connect.ts's close.
+    await close();
+
+    // --- Macro names (optional; outside the RPC session — see below) ---
+    progress("マクロ名を取得中…");
+    const macroNames = await readMacroNames();
+    leg(macroNames ? `マクロ名 ${macroNames.filter((n) => n).length} 件` : "マクロ名 なし");
+
     onTiming(`同期 ${elapsed().toFixed(1)}秒（${legs.join(" / ")}）`);
 
     return {
@@ -107,13 +122,39 @@ export async function syncKeymap(
       activeLayoutIndex,
       layers: keymap.layers,
       behaviors,
+      macroNames,
       keymapCrc: snapshot.keymapCrc >>> 0,
       activeLayout: snapshot.activeLayout,
       syncedAt: Date.now(),
     };
   } catch (e) {
-    close();
+    await close();
     throw explain(e);
+  }
+}
+
+/**
+ * Best-effort read of the dynamic-macro wire, for the names shown on `&dmac`
+ * keycaps (shared/keyboard/binding-face.ts's macroLabel, fed via FloatBoard.tsx
+ * / shared/keymap/macroNames.ts). Called after `close()` releases the RPC
+ * session: `dmacRead` talks to a separate GATT characteristic (BLE) or its own
+ * request/response pair on the same tunnel byte stream (USB), so it needs the
+ * link, not the RPC session, and closing the latter first keeps the two from
+ * racing on the connection's write path.
+ *
+ * NEVER throws: a keyboard running firmware older than the macros
+ * service/tunnel feature, a v1 (name-less) wire, a length that doesn't match
+ * DM_WIRE_LENS, or any transport error, all just mean "no names this time" —
+ * see this file's header comment and shared/keymap/macroNames.ts. A keymap
+ * sync must not fail over data the firmware might not even have.
+ */
+async function readMacroNames(): Promise<(string | null)[] | null> {
+  try {
+    const raw = await dmacRead();
+    return decodeMacroNames(Uint8Array.from(raw));
+  } catch (e) {
+    console.warn("[sync] macro name read failed (non-fatal)", e);
+    return null;
   }
 }
 

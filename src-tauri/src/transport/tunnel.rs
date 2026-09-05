@@ -63,6 +63,13 @@ pub const STATUS_OK: u64 = 0;
 /// unchanged (see PLAN-usb-tunnel.md §2).
 pub const FEATURE_LIVE_FEED: u32 = 0x0F;
 
+/// `macros`. READ answers with the same wire the `e1f4aa01` GATT
+/// characteristic carries (dm wire v1/v2 — see shared/dynamic_macros/
+/// dmacConfig.ts and dmac.rs). Matches torabo-studio's TunnelFeature.Macros
+/// (src/backends/rpc/config.ts) — feature ids are shared with the firmware and
+/// deliberately mirror each GATT service's UUID low byte.
+pub const FEATURE_MACROS: u32 = 0x0A;
+
 // --- framing ---------------------------------------------------------------
 
 /// Wrap a protobuf message in one SoF/ESC/EOF frame.

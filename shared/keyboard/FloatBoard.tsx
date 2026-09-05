@@ -163,6 +163,19 @@ export function FloatBoard({
     [cache.layers]
   );
 
+  // &dmac keycaps: cache.macroNames (see keymap/sync.ts + shared/keymap/
+  // macroNames.ts) uses `null` for "no name to show" — v1 firmware, an unread
+  // macros wire, or an explicitly unnamed slot all collapse to that one value,
+  // since they all draw the same M<N> fallback. resolveBindingFace's
+  // MacroNameLookup instead uses `undefined` for that (binding-face.ts is a
+  // translated file shared with Studio, which has its own reasons for that
+  // choice — see its header comment), so the null->undefined swap happens only
+  // here, at the one Float caller.
+  const macroNames = useMemo(
+    () => cache.macroNames?.map((n) => n ?? undefined) ?? null,
+    [cache.macroNames]
+  );
+
   const positions: KeyPosition[] = useMemo(() => {
     if (!layout || !layer) return [];
     return layout.keys.map((k, i) => {
@@ -181,7 +194,7 @@ export function FloatBoard({
         return { ...base, header: "Unknown", children: <span /> };
       }
       const behavior = cache.behaviors[binding.behaviorId];
-      const face = resolveBindingFace(binding, behavior, layers);
+      const face = resolveBindingFace(binding, behavior, layers, macroNames);
       return {
         ...base,
         header: behavior?.displayName || "Unknown",
@@ -197,7 +210,7 @@ export function FloatBoard({
         ),
       };
     });
-  }, [layout, layer, cache.behaviors, layers, keyLayout, shiftHeld]);
+  }, [layout, layer, cache.behaviors, layers, macroNames, keyLayout, shiftHeld]);
 
   return (
     <div className="floatboard">
