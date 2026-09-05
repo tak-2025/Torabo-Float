@@ -18,6 +18,9 @@ on:
     branches: [main]
     paths:
       - "web/**"
+      # shared/ lives outside web/ but is compiled into this build (see
+      # web/tsconfig.json's "@shared/*"), so a change there changes the site.
+      - "shared/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

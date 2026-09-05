@@ -25,10 +25,40 @@
        targets keep byte-identical (../shared); "~/*" is this target's own src
        root, used only so shared code can reach a per-target seam file (see
        shared/hooks/useDiag.ts importing "~/link") without a relative path that
-       would resolve outside shared/. */
+       would resolve outside shared/.
+
+       The entries after those two pin ../shared's own external imports to this
+       project's node_modules, which is what the layout already implies:
+       shared/ is type-checked against web/'s dependencies. They are needed
+       because TypeScript resolves a bare specifier by walking up from the
+       *importing file*, so ../shared/**'s `import "react"` looks in
+       ../node_modules — the desktop app's install. That exists locally, which
+       is why this only ever broke in CI: .github/workflows/pages.yml installs
+       web/ alone, so tsc walked up to a node_modules that was not there and
+       reported every shared/ file as untyped.
+
+       Each target is the package tsc would have picked itself had shared/ sat
+       under web/: @types/react rather than react (react ships no
+       declarations), and the studio client's lib/ rather than its root (a
+       paths mapping is a plain file lookup, so the package's "exports" map —
+       which is the only thing pointing at lib/ — is not consulted).
+
+       Type checking only: "noEmit" is on and Vite does its own resolution, so
+       none of this reaches the bundle. Vite's matching concern is the
+       "resolve.dedupe" in vite.config.ts. */
     "paths": {
       "@shared/*": ["../shared/*"],
-      "~/*": ["./src/*"]
+      "~/*": ["./src/*"],
+      "react": ["./node_modules/@types/react"],
+      "react/*": ["./node_modules/@types/react/*"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/*": ["./node_modules/@types/react-dom/*"],
+      "@zmkfirmware/zmk-studio-ts-client": [
+        "./node_modules/@zmkfirmware/zmk-studio-ts-client/lib/index"
+      ],
+      "@zmkfirmware/zmk-studio-ts-client/*": [
+        "./node_modules/@zmkfirmware/zmk-studio-ts-client/lib/*"
+      ]
     }
   },
   "include": ["src", "../shared"],
