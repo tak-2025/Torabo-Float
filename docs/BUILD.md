@@ -78,3 +78,19 @@ load-bearing ではありません（前 2 つは npm が optionalDependencies �
 意図的に残した書き換え組（`App.tsx` / `ble.ts` / `keymap/cache.ts` / `keymap/sync.ts` /
 `rpc/connect.ts` / `rpc/logging.ts` / `styles.css`）は今まで通り各ターゲットで個別に直します。
 理由は DESIGN-web.md の表に添えてあります。
+
+### `shared/` の一部は torabo-studio からの翻訳
+
+`shared/` のうち、キーキャップの見た目を決める 8 ファイル（`hid-usages.ts` /
+`keyboard/binding-face.ts` / `keyboard/legends.ts` / `dynamic_macros/dmacConfig.ts` /
+HID・behavior 名のデータ表 4 点）は **torabo-studio が源流**で、手編集禁止です
+（詳細は DESIGN-web.md「Studio → Float トランスレーター」）。
+
+```bash
+npm run translate        # ../torabo-studio から取り込み、tsc/build まで再検証
+npm run translate:check  # dry-run。ドリフトがあれば exit 1
+```
+
+既定では `../torabo-studio`（4 リポ SDK ルート直下の兄弟ディレクトリ）を読みます。別の
+チェックアウトを使うときは `node scripts/translate-from-studio.mjs <path> [--check]` で
+パスを渡します。

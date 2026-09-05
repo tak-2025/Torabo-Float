@@ -1,15 +1,15 @@
-// Ported verbatim from zmk-studio/src/hid-usages.ts.
-// Looks up human-readable labels for HID usages (keyboard page 7, consumer page 12).
+// import { UsagePages } from "./HidUsageTables-1.5.json";
+// Filtered with `cat src/HidUsageTables-1.5.json | jq '{ UsagePages: [.UsagePages[] | select([.Id] |inside([7, 12]))] }' > src/keyboard-and-consumer-usage-tables.json`
 import { UsagePages } from "./keyboard-and-consumer-usage-tables.json";
 import HidOverrides from "./hid-usage-name-overrides.json";
-
-const overrides: Record<string, Record<string, HidLabels>> = HidOverrides;
 
 interface HidLabels {
   short?: string;
   med?: string;
   long?: string;
 }
+
+const overrides: Record<string, Record<string, HidLabels>> = HidOverrides;
 
 export interface UsageId {
   Id: number;

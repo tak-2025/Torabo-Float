@@ -29,9 +29,31 @@ Web Bluetooth / Web Serial に置き換えたものです。
 
 | 区分 | ファイル |
 |---|---|
-| **`shared/` に集約**（17） | `liveFeed.ts` / `diag.ts` / `DiagPanel.tsx` / `hid-usages.ts` / `keyboard/FloatBoard.tsx` / `keyboard/Key.tsx` / `keyboard/PhysicalLayout.tsx` / `keyboard/HidUsageLabel.tsx` / `keyboard/binding-face.ts` / `keyboard/legends.ts` / `hooks/useLiveFeed.ts` / `hooks/useDiag.ts` / `keymap/types.ts`（新設。`CachedKeymap` 型だけを抽出。下記参照） ＋ データ 4 点（`hid-usage-name-overrides.json` / `keyboard-and-consumer-usage-tables.json` / `keyboard/behavior-short-names.json` / `keyboard/behavior-value-names.json`） |
+| **`shared/` に集約 — Float 自前**（10） | `liveFeed.ts` / `diag.ts` / `DiagPanel.tsx` / `keyboard/FloatBoard.tsx` / `keyboard/Key.tsx` / `keyboard/PhysicalLayout.tsx` / `keyboard/HidUsageLabel.tsx` / `hooks/useLiveFeed.ts` / `hooks/useDiag.ts` / `keymap/types.ts`（新設。`CachedKeymap` 型だけを抽出。下記参照） |
+| **`shared/` に集約 — torabo-studio から翻訳**（9） | `hid-usages.ts` / `keyboard/binding-face.ts` / `keyboard/sizing.ts`（新設。フェーズ③の継ぎ目 — 下記参照） / `keyboard/legends.ts` / `dynamic_macros/dmacConfig.ts`（新設） ＋ データ 4 点（`hid-usage-name-overrides.json` / `keyboard-and-consumer-usage-tables.json` / `keyboard/behavior-short-names.json` / `keyboard/behavior-value-names.json`）。下記「Studio → Float トランスレーター」参照 |
 | **各ターゲットに残したもの（意図的に別実装）** | `App.tsx`（UI の骨格そのものが別物 = URL 設定・Landing・3 表示方式・route B は Web だけ） / `main.tsx`（9 行の起点シムだが `./App` の相対 import が絡むため見送り。下記参照） / `ble.ts`（transport 実装そのもの） / `events.ts`・`link.ts`（後述の継ぎ目。実装は別） / `keymap/cache.ts`（保存先が Rust invoke と localStorage で別。型だけ `shared/keymap/types.ts` へ） / `keymap/sync.ts`（Web は進捗コールバック＋GATT書き込み失敗の補足を持つ） / `rpc/connect.ts`（transport 別の unsubscribe） / `rpc/logging.ts`（タイムアウト戦略が別：デスクトップ4秒固定 / Webはアイドル15秒+上限120秒） / `styles.css`（Web 追加分が大きく単純な追記ではない） |
 | **Web だけにあるもの**（11） | `serial.ts` / `link.ts` / `events.ts` / `config.ts` / `Landing.tsx` / `bridge.ts` / `pip.ts` / `boardSize.ts` / `rpc/activity.ts` / `keymap/import.ts` / `keymap/torabo-tsuki-layouts.json` |
+
+### Studio → Float トランスレーター
+
+2026-09（PLAN-translators.md フェーズ②）から、上の「torabo-studio から翻訳」の 9 ファイルは
+**torabo-studio が唯一の源流**です。手編集は禁止（tako-custom の builder-only ルールと同じ規律）。
+直すのは常に `torabo-studio/src/` 側で、`Torabo-Float/scripts/translate-from-studio.mjs`
+（`npm run translate`）がその内容をここへコピーします。`npm run translate:check` は
+ドリフトがあれば exit 1 になる dry-run で、CI やコミット前確認に使えます。
+
+`keyboard/binding-face.ts` は 3 系統（Studio の MacroNames 対応 / 旧 Float の FaceSource
+間接化 / Key-App の CachedBehavior 依存）に分かれていたものを 1 ファイルへ統合したもの
+です。外部依存は構造的な型（`BehaviorFaceSource`）とデフォルト引数（`macroNames = null`）
+だけに絞られていて、Float の呼び出し側（`FloatBoard.tsx`）は 3 引数のまま
+（`resolveBindingFace(binding, behavior, layers)`）で変更不要 — 4 引数目を省略すると
+今まで通り `M<N>` フォールバックになります。マクロ名表示自体（フェーズ③）は
+`FloatBoard.tsx` 側が `macroNames` を渡すようになった時点で有効になります。
+
+`keyboard/Key.tsx` と `keyboard/HidUsageLabel.tsx` は Studio 版と実装が本質的に別物
+（Studio はインタラクティブな daisyUI/Tailwind の `<button>`、Float は読み取り専用の
+プレーン CSS `<div>`）なので翻訳対象に**含めていません**。Float 自前のまま
+`shared/keyboard/` に残ります。
 
 `boardSize.ts` の幾何計算だけは `keyboard/PhysicalLayout.tsx` の `computeContentBounds()` と
 **意図的に重複**しています。PhysicalLayout.tsx が `shared/` へ移った後も、そこから export せずに

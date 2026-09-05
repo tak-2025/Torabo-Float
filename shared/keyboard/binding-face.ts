@@ -1,12 +1,23 @@
 /**
  * Decides what a keymap binding should show on its keycap.
  *
- * Ported from Torabo Studio's src/keyboard/binding-face.ts — same decision, same
- * reasoning; keep the two in step. Torabo-Float src/ と web/src/ の2コピーは同一。
- * Two deliberate differences from Studio's copy, both because Float only reads:
- * the behavior comes from the keymap cache (BehaviorFaceSource) instead of a
- * live GetBehaviorDetailsResponse, and validateValue is inlined below rather
- * than imported from a behaviors/ directory Float does not have.
+ * Translated verbatim into Torabo-Float (`shared/keyboard/binding-face.ts`,
+ * see PLAN-translators.md フェーズ②) — this file carries no Studio-only
+ * dependency so the same bytes work unchanged in both repos:
+ *   - `behavior` is typed as the structural `BehaviorFaceSource` below, not
+ *     the live-RPC `GetBehaviorDetailsResponse`, so Float can pass a
+ *     keymap-cache `CachedBehavior` (see cache.ts) without adapting anything;
+ *     Studio's own callers keep passing `GetBehaviorDetailsResponse` values
+ *     unchanged (it satisfies the structural type as-is).
+ *   - `validateValue` is inlined below rather than imported from
+ *     `../behaviors/parameters` — Float has no `behaviors/` directory.
+ *   - `macroNames` (last param) defaults to `null`, so Float's caller (which
+ *     has no MacroNamesContext yet) can simply omit it and get today's
+ *     `M<N>` fallback for every `&dmac` key, exactly as before.
+ *   - The label-length limits live in the sibling `./sizing` (structural seam,
+ *     PLAN-translators.md §2.5) rather than being hardcoded here, so a
+ *     phone-scale board (Key-App) can override just those two numbers without
+ *     touching this file at all.
  *
  * The board used to draw `param1` as a HID usage unconditionally, which is only
  * right for `&kp`. Everything else drew blank or misleading: `&lt 2 A` drew the
@@ -34,9 +45,6 @@
  *
  * and "param2 accepts a HID usage" means "param2 is the tap key" for any
  * hold-tap the firmware defines, including custom ones.
- *
- * The metadata reaches here through the keymap cache: sync.ts keeps what
- * getBehaviorDetails reported (cache.ts, CachedBehavior.metadata).
  */
 import type {
   BehaviorBindingParametersSet,
@@ -44,17 +52,9 @@ import type {
 } from "@zmkfirmware/zmk-studio-ts-client/behaviors";
 import type { BehaviorBinding } from "@zmkfirmware/zmk-studio-ts-client/keymap";
 
-import {
-  hid_usage_get_labels,
-  hid_usage_page_and_id_from_usage,
-} from "../hid-usages";
+import { hid_usage_get_labels, hid_usage_page_and_id_from_usage } from "../hid-usages";
+import { MAX_BODY_LABEL, MAX_HOLD_LABEL } from "./sizing";
 import ValueNames from "./behavior-value-names.json";
-
-/** Header space is tight (9 chars for the behavior name), so hold labels are
- *  clipped rather than allowed to push the name out of the key. */
-const MAX_HOLD_LABEL = 6;
-/** A key body fits roughly this much before it stops being readable. */
-const MAX_BODY_LABEL = 7;
 
 const valueNames: Record<string, string> = ValueNames;
 
@@ -83,16 +83,29 @@ export interface LayerRef {
 }
 
 /**
- * What this needs of a behavior. Structural rather than an import of
- * CachedBehavior so keyboard/ keeps no dependency on keymap/, and `metadata` is
- * optional on purpose: a cache built from a Torabo Studio backup file carries
- * display names only, and then every face falls back to the old
- * param1-as-usage rendering rather than throwing.
+ * What this needs of a behavior. Structural rather than importing
+ * `GetBehaviorDetailsResponse` (Studio's live-RPC shape) or `CachedBehavior`
+ * (Float's keymap-cache shape), so both can be passed as-is. `metadata` is
+ * optional on purpose: a cache built from a Torabo Studio backup file (or a
+ * keyboard whose behaviors have not been read yet) carries display names
+ * only, and then every face falls back to the old param1-as-usage rendering
+ * rather than throwing.
  */
 export interface BehaviorFaceSource {
   displayName: string;
   metadata?: BehaviorBindingParametersSet[];
 }
+
+/**
+ * Slot names for `&dmac` keycaps, as read from a v2-capable keyboard's macros
+ * wire (see dynamic_macros/MacroNamesContext.tsx, dmacConfig.ts). Structural
+ * rather than importing Studio's `MacroNames` type, so this file has no
+ * dependency on dynamic_macros/ — `null` means "unknown" (no v2 read yet, or
+ * v1 firmware, or — Float's case — no such context exists at all), distinct
+ * from an array of empty strings, which means "read, and these slots are
+ * unnamed".
+ */
+type MacroNameLookup = readonly (string | undefined)[] | null;
 
 export interface BindingFace {
   /** A HID usage to draw on the key body, when the binding types something. */
@@ -106,9 +119,10 @@ export interface BindingFace {
 }
 
 /**
- * Does `value` satisfy one of the descriptions the firmware gave? Ported from
- * Torabo Studio's behaviors/parameters.ts `validateValue`; Float has no behavior
- * editor, so matchingSet below is the only caller.
+ * Does `value` satisfy one of the descriptions the firmware gave? Inlined
+ * rather than imported from `../behaviors/parameters` (Float has no
+ * `behaviors/` directory) — kept byte-identical to that module's own
+ * `validateValue`, which remains the copy the behavior editor uses.
  */
 function validateValue(
   layerIds: number[],
@@ -132,6 +146,7 @@ function validateValue(
     } else if (v.nil) {
       return value === 0;
     } else {
+      console.error("Unknown check type!");
       return false;
     }
   });
@@ -171,14 +186,10 @@ function usageLabel(usage: number): string | undefined {
   // Implicit modifiers live in the top byte; the label comes from the base
   // usage, exactly as HidUsageLabel does.
   const [rawPage, id] = hid_usage_page_and_id_from_usage(usage);
-  return hid_usage_get_labels(rawPage & 0xff, id).short?.replace(
-    /^Keyboard /,
-    ""
-  );
+  return hid_usage_get_labels(rawPage & 0xff, id).short?.replace(/^Keyboard /, "");
 }
 
 function layerLabel(param: number, layers: LayerRef[]) {
-  // Empty names fall through to `#id`, matching the board header's own fallback.
   return layers.find((l) => l.id === param)?.name || `#${param}`;
 }
 
@@ -220,25 +231,36 @@ function constantLabel(
 }
 
 /**
- * What a `&dmac N` key shows: always `M<N>`, matching how the macros panel
- * itself numbers slots (`Slot 3` / `&dmac 3`). Studio's copy of this function
- * shows the slot's stored name when it has read one; Float defers that —
- * name display arrives later via the Studio→Float translator, per
- * PLAN-translators.md.
+ * What a `&dmac N` key shows: the slot's name when this keyboard has one and
+ * the app has read it, else `M<N>`.
+ *
+ * `M<N>` is not a placeholder to be removed later — it is the label for every
+ * case where a name cannot be shown, and there are three of them: firmware
+ * whose macros wire is v1 (no names exist at all), a v2 keyboard whose macros
+ * panel has not been read yet this session, and a slot the user simply has not
+ * named. All three want the same answer, and it matches how the panel itself
+ * numbers its slots (`Slot 3` / `&dmac 3`).
  */
-function macroLabel(slot: number): string {
-  return `M${slot}`;
+function macroLabel(slot: number, names: MacroNameLookup): string {
+  const name = names?.[slot];
+  return name ? clip(name, MAX_BODY_LABEL) : `M${slot}`;
 }
 
 /**
  * What to draw for one binding. Falls back to the old param1-as-usage behavior
  * whenever the metadata cannot say better, so nothing that rendered correctly
  * before changes.
+ *
+ * `macroNames` is the read side of MacroNamesContext (null until a v2-capable
+ * keyboard's macros panel has been read); omitting it just means every macro
+ * key draws `M<N>` — which is exactly what Float's caller gets today, since it
+ * has no such context to pass one from.
  */
 export function resolveBindingFace(
   binding: BehaviorBinding,
   behavior: BehaviorFaceSource | undefined,
-  layers: LayerRef[]
+  layers: LayerRef[],
+  macroNames: MacroNameLookup = null
 ): BindingFace {
   const muted = behavior ? MUTED_BEHAVIORS.has(behavior.displayName) : false;
 
@@ -246,7 +268,7 @@ export function resolveBindingFace(
   // "param1 is a number in a range", which every rule below reads as "draw
   // param1 as a HID usage" — i.e. an empty keycap. See MACRO_BEHAVIOR.
   if (behavior?.displayName === MACRO_BEHAVIOR) {
-    return { text: macroLabel(binding.param1), muted };
+    return { text: macroLabel(binding.param1, macroNames), muted };
   }
 
   const metadata = behavior?.metadata;
@@ -280,10 +302,7 @@ export function resolveBindingFace(
 
   // &mo / &to / &tog / &sl — say which layer, not a blank key.
   if (accepts(set.param1, "layerId")) {
-    return {
-      text: clip(layerLabel(binding.param1, layers), MAX_BODY_LABEL),
-      muted,
-    };
+    return { text: clip(layerLabel(binding.param1, layers), MAX_BODY_LABEL), muted };
   }
 
   // &bt / &out and friends — the firmware names each value it accepts.

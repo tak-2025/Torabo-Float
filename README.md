@@ -121,12 +121,34 @@ npm run build:single      # dist-single/index.html — 単一 HTML（ダウン�
 
 ---
 
+## ソースの共有関係
+
+デスクトップ版（[`src/`](src/)）と Web 版（[`web/src/`](web/src/)）は、盤面描画・デコーダ・
+キャッシュ形式など共有できる部分をリポジトリ直下の [`shared/`](shared/) に1部だけ持ち、
+両ターゲットがそこを `@shared/*`（自分自身の src は `~/*`）で import します。同名ファイルを
+2箇所に持って手で同期する運用はもう行っていません。詳細は
+[`docs/DESIGN-web.md`](docs/DESIGN-web.md) を参照してください。
+
+`shared/` のうち、キーキャップ表示に関わる一部（`legends.ts` / `hid-usages.ts` /
+HID usage データ2点 / `behavior-*.json` 2点 / `binding-face.ts` / `keyboard/sizing.ts` /
+`dynamic_macros/dmacConfig.ts` の計9ファイル）は **[Torabo Studio](https://github.com/tak-2025/Torabo-Studio)
+が源流**で、本リポジトリでは手編集しません。Studio 側を直してから
+
+```bash
+npm run translate          # torabo-studio（既定では ../torabo-studio）から反映し、ビルドで再検証
+npm run translate:check    # ドライラン: 差分があれば exit 1
+```
+
+で取り込みます（`scripts/translate-from-studio.mjs`）。そして本リポジトリ自身が、
+モバイル版 **[Torabo-Key-App](https://github.com/tak-2025/Torabo-Key-App)** にとっての
+翻訳元でもあります（`shared/` の該当ファイルを Key-App が同様のスクリプトで取り込みます）。
+
 ## ドキュメント
 
 開発者向けの設計メモは [`docs/`](docs/) にあります。
 
 - [`docs/DESIGN-live-feed.md`](docs/DESIGN-live-feed.md) — ライブフィードの受信仕様
-  （GATT 採番・16 バイトワイヤ・USB トンネル・イベント正規化）
+  （GATT 採番・16 バイトワイヤ・USB トンネル・イベント正規化・不正フレーム防御）
 - [`docs/DESIGN-keymap.md`](docs/DESIGN-keymap.md) — キーマップと物理レイアウトの供給
   （RPC 同期・キャッシュ形式・JSON インポート）
 - [`docs/DESIGN-web.md`](docs/DESIGN-web.md) — Web 版の設計（ソース共有・表示 3 方式・URL パラメータ）
@@ -139,7 +161,8 @@ npm run build:single      # dist-single/index.html — 単一 HTML（ダウン�
 - **[torabo-fun](https://tak-2025.github.io/torabo-fun/)** — torabo-tsuki 拡張プロジェクト群の紹介ポータル
 - **[torabo-tsuki](https://github.com/sekigon-gonnoc/torabo-tsuki-lp)** — sekigon-gonnoc 氏設計のキーボード本体（上流・GPL-3.0）
 - **[torabo-tsuki_ext_FW](https://github.com/tak-2025/torabo-tsuki_ext_FW)** — 本アプリと対になる拡張 FW モジュール（`live_feed` / `torabo-rpc-tunnel` を含む）
-- **[Torabo Studio](https://github.com/tak-2025/Torabo-Studio)** — torabo-tsuki 向けに機能拡張した [ZMK Studio](https://github.com/zmkfirmware/zmk-studio) の非公式フォーク（キーマップ編集・ライブ設定）
+- **[Torabo Studio](https://github.com/tak-2025/Torabo-Studio)** — torabo-tsuki 向けに機能拡張した [ZMK Studio](https://github.com/zmkfirmware/zmk-studio) の非公式フォーク（キーマップ編集・ライブ設定）。本アプリのキーキャップ表示ロジックの源流でもあります（上記「ソースの共有関係」参照）
+- **[Torabo-Key-App](https://github.com/tak-2025/Torabo-Key-App)** — 同じライブ表示をモバイル（Android / iPhone）で行うアプリ。本アプリを翻訳元としています
 - **[ZMK Firmware](https://zmk.dev/)** / **[ZMK Studio](https://github.com/zmkfirmware/zmk-studio)** — 土台となるファームウェア／設定アプリ（本アプリは Studio の BLE / USB transport 実装を流用しています）
 
 ---
