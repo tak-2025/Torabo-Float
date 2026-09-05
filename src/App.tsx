@@ -125,6 +125,11 @@ export function App() {
   const [cache, setCache] = useState<CachedKeymap | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState("");
+  // Live progress text during a sync (キーマップ → ビヘイビア → マクロ名 — see
+  // keymap/sync.ts's onProgress). A full sync over BLE INDICATE can run tens of
+  // seconds; without this the app just shows "同期中…" the whole time, which
+  // reads as a hang the same way web/src/App.tsx's syncStage was added to fix.
+  const [syncStage, setSyncStage] = useState("");
   const [stale, setStale] = useState(false);
 
   const [log, setLog] = useState<string[]>([]);
@@ -287,10 +292,15 @@ export function App() {
   const runSync = async (snap: LiveFeedEvent | null) => {
     setSyncing(true);
     setSyncError("");
+    setSyncStage("キーマップ同期を開始しています…");
     try {
       const keymapCrc = snap ? snap.keymapCrc : layer.keymapCrc;
       const activeLayout = snap ? snap.activeLayout : layer.activeLayout;
-      const result = await syncKeymap({ keymapCrc, activeLayout });
+      const result = await syncKeymap(
+        { keymapCrc, activeLayout },
+        setSyncStage,
+        (summary) => console.log(`[sync] ${summary}`)
+      );
       await cacheWrite(result);
       setCache(result);
       setStale(false);
@@ -298,6 +308,7 @@ export function App() {
       setSyncError(e instanceof Error ? e.message : String(e));
     } finally {
       setSyncing(false);
+      setSyncStage("");
     }
   };
 
@@ -506,6 +517,13 @@ export function App() {
               <span className="settings-value">{scalePercent}%</span>
             </>
           )}
+        </div>
+      )}
+
+      {syncing && (
+        <div className="note note-busy">
+          <span className="spinner" aria-hidden="true" />
+          <span>{syncStage || "キーマップを同期中…"}</span>
         </div>
       )}
 
