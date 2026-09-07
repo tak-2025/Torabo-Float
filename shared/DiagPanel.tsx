@@ -65,10 +65,33 @@
 // rather than ⚪ 非搭載 — see diagLayout.ts's isUndetectableDialRow for the
 // condition and diag.ts's UNDETECTABLE_CHIP for why the two are different
 // claims.
+//
+// LAID OUT AS THE BOARD IS, not as a flat list: two columns of halves (右
+// then 左 — diagLayout.ts's DIAG_GRID_SIDES, one constant to flip) by two
+// rows of connectors (拡張 above 標準 — DIAG_GRID_CONNS), so each cell is one
+// physical FFC connector and the panel answers "what is plugged in where" at
+// a glance instead of asking the reader to sort four similar-looking rows by
+// their name prefixes. On the reported hardware that reads 右拡張 =
+// エンコーダ, 右標準 = トラックボール, 左拡張 = トラックパッド, 左標準 =
+// 高分解能ダイヤル.
+//
+// Which cell a row belongs to is DiagRowView.place, resolved by the same
+// label machinery that produced the row's name — never by parsing the name
+// apart. A row nothing could place (no descriptor, old firmware, an
+// unmatched kind, an unknown peripheral reg slot, a knob past the last
+// declared rotation slot) keeps its row intact in the その他 strip under the
+// grid rather than being dropped: diagGrid() builds that strip as "every row
+// no cell claimed", so the grid cannot lose one.
+//
+// An EMPTY cell renders its connector name over a muted 「なし」 rather than
+// disappearing — "nothing is on this connector" is an answer to the question
+// the grid asks, and a vanishing cell would silently reshape it.
 import type { CachedKeymap } from "./keymap/types";
 import {
   DeclaredModules,
+  DiagGridCell,
   DiagRowView,
+  diagGrid,
   diagRowViews,
 } from "./diagLayout";
 import {
@@ -99,6 +122,7 @@ export function DiagPanel({
   };
 
   const rows = diagRowViews(declared, records);
+  const grid = diagGrid(rows);
 
   return (
     <div className="diag">
@@ -114,10 +138,40 @@ export function DiagPanel({
         <div className="muted diag-note">診断データを待機中…</div>
       ) : (
         <div className="diag-list">
-          {rows.map((row) => (
-            <DiagRow key={row.key} row={row} nowTickMs={nowTickMs} />
-          ))}
+          {/* Cells come out side-major, and the two-column shape is CSS's
+              (grid-auto-flow: column over two rows) — which is what lets the
+              narrow-window rule collapse to a single column by flipping the
+              flow back to `row`, with each half still whole and still
+              拡張-then-標準. Reordering here would fight that. */}
+          <div className="diag-grid">
+            {grid.cells.map((cell) => (
+              <DiagCell key={cell.key} cell={cell} nowTickMs={nowTickMs} />
+            ))}
+          </div>
+          {grid.other.length > 0 && (
+            <div className="diag-other">
+              <div className="diag-cell-title">その他</div>
+              {grid.other.map((row) => (
+                <DiagRow key={row.key} row={row} nowTickMs={nowTickMs} />
+              ))}
+            </div>
+          )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function DiagCell({ cell, nowTickMs }: { cell: DiagGridCell; nowTickMs: number }) {
+  return (
+    <div className="diag-cell">
+      <div className="diag-cell-title">{cell.title}</div>
+      {cell.rows.length === 0 ? (
+        <div className="diag-cell-empty">なし</div>
+      ) : (
+        cell.rows.map((row) => (
+          <DiagRow key={row.key} row={row} nowTickMs={nowTickMs} />
+        ))
       )}
     </div>
   );

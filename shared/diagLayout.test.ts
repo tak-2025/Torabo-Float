@@ -15,8 +15,11 @@ import { describe, expect, it } from "vitest";
 import { CapsSide, ModuleKind, ModuleSlots } from "./caps/toraboCaps";
 import { DiagRecord, Status, decodeMeta } from "./diag";
 import {
+  DIAG_GRID_CONNS,
+  DIAG_GRID_SIDES,
   DeclaredModules,
   declaredRowLabel,
+  diagGrid,
   diagRowViews,
   rotationSlots,
   shouldHidePeripheralRow,
@@ -343,5 +346,161 @@ describe("peripheral rotation buttons (reg 2 = standard, reg 3 = extension)", ()
 
   it("leaves a reg slot the convention has no rule for unnamed", () => {
     expect(text(declaring({ leftStd: ModuleKind.Dial }), 4)).toBeNull();
+  });
+});
+
+describe("diagGrid — 2 halves x 2 connectors", () => {
+  // The reported hardware, as the panel lays it out: 右拡張 = エンコーダ,
+  // 右標準 = トラックボール, 左拡張 = トラックパッド, 左標準 =
+  // 高分解能ダイヤル. Same declaration and same records as the two-knob
+  // describe above; what is under test here is only where each row lands.
+  const declared = declaring({
+    leftStd: ModuleKind.Dial,
+    leftExt: ModuleKind.Pad,
+    rightStd: ModuleKind.Ball,
+    rightExt: ModuleKind.Encoder,
+  });
+
+  const records = [
+    localPointingRec(0, 2 /* right */, 1 /* std FFC */, 2 /* Kind.BALL */),
+    rotationRec(1, { cw: 7, ccw: 3, btn: 1 }), // sensor 0 — the left dial
+    rotationRec(2, { cw: 40, ccw: 41, btn: 2 }), // sensor 1 — the right encoder
+    peripheralRec(3, 0), // the peripheral's extension pad
+    peripheralRec(4, 2), // the dial's push button — redundant, hidden
+  ];
+
+  /** The whole grid as `連結名 -> ラベル[]`, cells in their emitted order. */
+  const cellMap = (views: ReturnType<typeof diagRowViews>) =>
+    diagGrid(views).cells.map(
+      (c) => [c.title, c.rows.map((r) => r.label)] as [string, string[]],
+    );
+
+  it("puts each of the four devices in its own cell", () => {
+    expect(cellMap(diagRowViews(declared, records))).toEqual([
+      ["左拡張", ["左拡張: パッド"]],
+      ["左標準", ["左標準: 高分解能ダイヤル"]],
+      ["右拡張", ["右拡張: エンコーダ"]],
+      ["右標準", ["右標準: ボール"]],
+    ]);
+  });
+
+  it("emits the halves in DIAG_GRID_SIDES order, connectors in DIAG_GRID_CONNS order", () => {
+    // The column order is the one constant to flip; the row order puts the
+    // extension connector above the standard one. Pinned as data rather than
+    // only through the labels above so a flip is a deliberate edit here too.
+    expect(DIAG_GRID_SIDES).toEqual([CapsSide.Left, CapsSide.Right]);
+    expect(DIAG_GRID_CONNS).toEqual(["ext", "std"]);
+    expect(diagGrid(diagRowViews(declared, records)).cells.map((c) => c.place)).toEqual([
+      { side: CapsSide.Left, conn: "ext" },
+      { side: CapsSide.Left, conn: "std" },
+      { side: CapsSide.Right, conn: "ext" },
+      { side: CapsSide.Right, conn: "std" },
+    ]);
+  });
+
+  it("classifies without touching the rendered text", () => {
+    // The placement is data on the view, not the label string parsed back
+    // apart: a row keeps its own name, chip source and counters.
+    const views = diagRowViews(declared, records);
+    const encoder = views.find((v) => v.label === "右拡張: エンコーダ");
+    expect(encoder?.place).toEqual({ side: CapsSide.Right, conn: "ext" });
+    expect(encoder?.rec?.detail).toBe(40 | (41 << 8) | (2 << 16));
+  });
+
+  it("leaves その他 empty when every row is placed", () => {
+    expect(diagGrid(diagRowViews(declared, records)).other).toEqual([]);
+  });
+
+  it("keeps a synthesized 検知不可 row in its own cell", () => {
+    // Old firmware sends one kind=ENC row for two declared knobs: the missing
+    // one is synthesized, and it belongs in the cell it was declared at — not
+    // in その他, which is for rows nothing could place.
+    const grid = diagGrid(
+      diagRowViews(declared, [records[0], rotationRec(1, { cw: 7, ccw: 3, btn: 1 }), records[3]]),
+    );
+    const encCell = grid.cells.find((c) => c.title === "右拡張");
+    expect(encCell?.rows.map((r) => r.label)).toEqual(["右拡張: エンコーダ"]);
+    expect(encCell?.rows[0].rec).toBeNull();
+    expect(encCell?.rows[0].undetectable).toBe(true);
+    expect(grid.other).toEqual([]);
+  });
+});
+
+describe("diagGrid — empty cells and その他", () => {
+  const cellRows = (grid: ReturnType<typeof diagGrid>, title: string) =>
+    grid.cells.find((c) => c.title === title)?.rows.map((r) => r.label);
+
+  it("still emits all four cells when only one connector reported anything", () => {
+    // An empty cell is an answer ("nothing on this connector"), so it is kept
+    // and rendered as its name over 「なし」 rather than dropped.
+    const grid = diagGrid(
+      diagRowViews(declaring({ rightStd: ModuleKind.Ball }), [
+        localPointingRec(0, 2, 1, 2 /* Kind.BALL */),
+      ]),
+    );
+    expect(grid.cells).toHaveLength(4);
+    expect(grid.cells.map((c) => c.title)).toEqual(["左拡張", "左標準", "右拡張", "右標準"]);
+    expect(cellRows(grid, "右標準")).toEqual(["右標準: ボール"]);
+    expect(cellRows(grid, "右拡張")).toEqual([]);
+    expect(cellRows(grid, "左拡張")).toEqual([]);
+    expect(cellRows(grid, "左標準")).toEqual([]);
+    expect(grid.other).toEqual([]);
+  });
+
+  it("sends an unplaceable row to その他 with every cell left empty", () => {
+    // No descriptor at all (old firmware / a failed caps read): the label
+    // falls back to diag.ts's plain kind word and nothing places the row.
+    const views = diagRowViews({ moduleSlots: null, centralSide: null }, [
+      rotationRec(0, { cw: 1, ccw: 0, btn: 0 }),
+    ]);
+    expect(views[0].place).toBeNull();
+
+    const grid = diagGrid(views);
+    expect(grid.cells.every((c) => c.rows.length === 0)).toBe(true);
+    expect(grid.other.map((r) => r.label)).toEqual(["エンコーダ"]);
+  });
+
+  it("sends a knob past the last declared slot to その他", () => {
+    // A declared slot names sensor 0; sensor 1 is a knob the descriptor does
+    // not account for, so it is named by index and has no cell to sit in.
+    const grid = diagGrid(
+      diagRowViews(declaring({ leftStd: ModuleKind.Dial }), [
+        rotationRec(1, { cw: 1, ccw: 0, btn: 0 }),
+        rotationRec(2, { cw: 2, ccw: 0, btn: 0 }),
+      ]),
+    );
+    expect(cellRows(grid, "左標準")).toEqual(["左標準: 高分解能ダイヤル"]);
+    expect(grid.other.map((r) => r.label)).toEqual(["回転デバイス #1"]);
+  });
+
+  it("sends a peripheral row on an unknown reg slot to その他", () => {
+    // reg 4 has no rule in the builder convention, so the row keeps diag.ts's
+    // generic slot label and stays out of the grid rather than being guessed
+    // into a cell.
+    const grid = diagGrid(
+      diagRowViews(declaring({ leftStd: ModuleKind.Dial, rightStd: ModuleKind.Ball }), [
+        rotationRec(0, { cw: 1, ccw: 0, btn: 0 }),
+        peripheralRec(5, 4),
+      ]),
+    );
+    expect(cellRows(grid, "左標準")).toEqual(["左標準: 高分解能ダイヤル"]);
+    expect(grid.other).toHaveLength(1);
+    expect(grid.other[0].place).toBeNull();
+  });
+
+  it("loses nothing: every view is in exactly one cell or in その他", () => {
+    const views = diagRowViews(
+      declaring({ leftStd: ModuleKind.Dial, rightStd: ModuleKind.Ball }),
+      [
+        localPointingRec(0, 2, 1, 2 /* Kind.BALL */),
+        rotationRec(1, { cw: 1, ccw: 0, btn: 0 }),
+        rotationRec(2, { cw: 2, ccw: 0, btn: 0 }),
+        peripheralRec(5, 4),
+      ],
+    );
+    const grid = diagGrid(views);
+    const keys = [...grid.cells.flatMap((c) => c.rows), ...grid.other].map((r) => r.key);
+    expect(keys.slice().sort()).toEqual(views.map((v) => v.key).sort());
+    expect(new Set(keys).size).toBe(views.length);
   });
 });

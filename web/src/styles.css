@@ -504,6 +504,56 @@ select {
   flex-direction: column;
   gap: 4px;
 }
+
+/* The 2x2 layout the rows sit in: columns = keyboard half, rows = connector
+   (diagLayout.ts's DIAG_GRID_SIDES / DIAG_GRID_CONNS own both orders). The
+   cells arrive side-major, and `grid-auto-flow: column` over two explicit
+   rows is what turns that order into two columns of two — which is also why
+   the narrow rule below can collapse to one column by flipping a single
+   property, leaving each half whole and still 拡張-then-標準.
+
+   minmax(0, 1fr) rather than 1fr: a grid track's default minimum is its
+   content's, so a long label would widen its column and push this panel into
+   a horizontal scrollbar instead of ellipsing inside it. The min-width: 0 on
+   .diag-cell and .diag-label are the same fix one level down (a flex item's
+   default min-width is auto for the same reason). */
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  grid-auto-flow: column;
+  align-items: start;
+  gap: 4px;
+}
+.diag-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+/* The connector's name over its rows — and, for a connector nothing was
+   reported on, over 「なし」 rather than over nothing at all. */
+.diag-cell-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+  padding-left: 2px;
+}
+.diag-cell-empty {
+  background: var(--log-bg);
+  border: 1px dashed var(--log-border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+/* Rows the declaration could not place — kept below the grid, never dropped. */
+.diag-other {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
 .diag-row {
   background: var(--log-bg);
   border: 1px solid var(--log-border);
@@ -522,6 +572,7 @@ select {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
 }
 .diag-chip {
   margin-left: auto;
@@ -576,6 +627,16 @@ select {
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   color: var(--log-fg);
+}
+
+/* Narrower than a readable column pair: one column, each half whole and
+   拡張 before 標準 within it — the DOM order the cells already come in. */
+@media (max-width: 480px) {
+  .diag-grid {
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
 }
 
 /* --- FloatBoard --- */

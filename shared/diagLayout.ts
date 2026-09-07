@@ -738,3 +738,79 @@ export function diagRowViews(
   );
   return out;
 }
+
+/**
+ * COLUMN ORDER — the halves, left column first.
+ *
+ * One constant so the order is one edit to flip, and so nothing else in this
+ * module or the panel has an opinion about it: every column, cell key and
+ * heading below is generated from this list. Left first matches the physical
+ * layout as the user looks down at the keyboard (2026-09-08 request) and is
+ * deliberately NOT the central/peripheral order rotationSlots() uses.
+ * That one is a wire fact (sensor numbering) and must not move; this one is
+ * presentation, and moves whenever a reader wants it to.
+ */
+export const DIAG_GRID_SIDES: readonly KnownSide[] = [CapsSide.Left, CapsSide.Right];
+
+/**
+ * ROW ORDER — the connectors, top row first: extension above standard.
+ *
+ * Also the order a half's cells appear in when the grid collapses to a single
+ * column on a narrow window (see the panel's CSS): the cells are emitted
+ * side-major, so one column reads 右拡張 / 右標準 / 左拡張 / 左標準 — each
+ * half still whole, each half still 拡張 then 標準.
+ */
+export const DIAG_GRID_CONNS: readonly ConnKey[] = ["ext", "std"];
+
+/** One cell of the grid: everything the panel needs to render one connector,
+ * including an empty one (`rows` is simply empty — the cell still exists, and
+ * still says which connector it is). */
+export interface DiagGridCell {
+  /** Stable React key. */
+  key: string;
+  place: DiagPlace;
+  /** 「右拡張」 — the heading, and the whole of an empty cell's meaning. */
+  title: string;
+  /** The rows at this connector, in diagRowViews() order. Usually one; two
+   * or more whenever the declaration puts several rows on one connector (a
+   * knob's own row plus a peripheral row the hide rules kept). */
+  rows: DiagRowView[];
+}
+
+/**
+ * The panel's rows arranged as the four declared connectors plus a leftovers
+ * strip.
+ *
+ * `cells` is always all four, in the order the constants above define
+ * (side-major: every connector of DIAG_GRID_SIDES[0], then the next half's).
+ * An empty cell is not dropped — a connector the firmware said nothing about
+ * is itself the answer to "what is plugged in where", and dropping it would
+ * silently reshape the grid.
+ *
+ * `other` is every row no cell claimed, so the grid can never lose one. In
+ * practice that is exactly the rows DiagRowView.place is null for — see its
+ * doc comment for the five ways that happens, all of which reduce to "the
+ * declaration could not place this row". Building it as "whatever the cells
+ * did not take" rather than as "place === null" keeps that true even if the
+ * column list above is edited to show fewer halves.
+ */
+export interface DiagGrid {
+  cells: DiagGridCell[];
+  other: DiagRowView[];
+}
+
+export function diagGrid(views: DiagRowView[]): DiagGrid {
+  const claimed = new Set<DiagRowView>();
+  const cells: DiagGridCell[] = [];
+
+  for (const side of DIAG_GRID_SIDES) {
+    for (const conn of DIAG_GRID_CONNS) {
+      const rows = views.filter((v) => v.place?.side === side && v.place?.conn === conn);
+      for (const row of rows) claimed.add(row);
+      const place: DiagPlace = { side, conn };
+      cells.push({ key: `${side}-${conn}`, place, title: placeTitle(place), rows });
+    }
+  }
+
+  return { cells, other: views.filter((v) => !claimed.has(v)) };
+}
