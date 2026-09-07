@@ -5,12 +5,23 @@
 // (shared/diag.ts's diagLabel fallback for both). Also covers ModuleKind.Dial
 // (高分解能ダイヤル): the diag WIRE itself has no "dial" kind — its meta byte's
 // 2-bit kind field only has room for pad/ball/encoder — so a dial only ever
-// shows up here via the declared-connector path: its optional push button
-// rides the same reg=2 split channel as an encoder's, so peripheralDeclared-
-// Label()/shouldHidePeripheralRow() below treat Encoder and Dial alike on
-// that connector, and shouldHideAbsentEncoderRow() separately hides the
-// always-present local "encoder" pseudo-device row on a board that declares
-// no encoder anywhere (e.g. this one has a dial instead).
+// shows up here via the declared-connector path.
+//
+// ROTATION DEVICES ARE ADDRESSED BY SENSOR INDEX, not by kind. The wire calls
+// every rotation device an ENCODER (there is no dial kind to call it anything
+// else), and firmware emits ONE kind=ENC record PER rotation sensor — so on a
+// board with a dial and an encoder the two rows are indistinguishable from
+// each other by their own contents. What separates them is their ORDER:
+// sorted by device_id ascending, the i-th kind=ENC row is sensor index i
+// (the ids are contiguous and the first is the same pseudo-device id
+// single-device firmware has always emitted, so a one-knob board is
+// unchanged). rotationSlots() below turns the declaration into the matching
+// ordered list of connectors — PLAN-dial-tab.md §6.2's numbering rule, the
+// same order torabo-rot-sensors composes the `zmk,keymap-sensors` list in —
+// and the i-th row simply takes the i-th slot's name. That ordering is the
+// single source of truth for every rotation question this module answers:
+// which row is which device, which peripheral button rows are redundant, and
+// which declared knob the firmware never reported at all.
 //
 // Float-owned, no Studio equivalent: Studio's own module-layout section
 // (torabo-studio/src/caps/moduleLayout.ts) answers a different question — a
@@ -20,9 +31,8 @@
 // (its kind, or its bare reg-slot number) corresponds to which of the four
 // declared connectors" — for the diag list Float already renders, not a grid
 // of its own. Pure functions only, same discipline as moduleLayout.ts on the
-// Studio side: no React, testable without a component tree (Float has no JS
-// test runner though, see the repo's package.json note, so these are
-// exercised by hand / via the app rather than a vitest file).
+// Studio side: no React, testable without a component tree — and now actually
+// tested that way, in the sibling diagLayout.test.ts (vitest, `npm test`).
 //
 // WIRE FACT vs CONVENTION — for the reader of this module, not of the panel.
 // Every label carries `estimated` recording which of the two it came from.
@@ -33,10 +43,15 @@
 // derived a name is not something a user can act on, and badging some rows
 // only invited distrust of correct labels. The flag stays because the
 // distinction still governs how much this module is allowed to infer, which
-// is what the two cases below are about:
+// is what the three cases below are about:
 //
-//   - LOCAL rows (a diag record whose PERIPHERAL status bit is clear — this
-//     device's own attached pointing devices): the row's `kind` comes
+//   - ROTATION rows (local, kind=ENC — see the section above): named by
+//     POSITION in a list both sides derive from the same declaration, so a
+//     name is as solid as the declaration itself — `estimated: false`. What
+//     the row's own contents contribute is only "this is the i-th one".
+//
+//   - LOCAL POINTING rows (a diag record whose PERIPHERAL status bit is
+//     clear and whose kind is pad/ball): the row's `kind` comes
 //     straight off its own diag `meta` byte (shared/diag.ts's decodeMeta),
 //     reported by the connected device's own driver. Matching that kind
 //     against the CONNECTED device's two declared connectors
@@ -51,20 +66,23 @@
 //
 //   - PERIPHERAL generic rows (shared/diag.ts's peripheralSlot() rows: the
 //     split-receiver entries whose `meta` is always 0, so the wire itself
-//     names them only by a bare reg-slot integer 0/1/2): which physical
+//     names them only by a bare reg-slot integer 0..3): which physical
 //     connector that integer names is a FIRMWARE-BUILD CONVENTION, not
 //     something the wire states. Source: torabo-tsuki_ext_FW/firmware-
 //     builder/PATTERN-MATRIX.md §2, "Reg-slot assignment rule" — a
 //     standard-connector POINTING device (pad/ball) takes reg 0; an
 //     extension pad takes reg 0 if the standard slot holds no pointing
-//     device, else reg 1 (encoders are never pointing devices for this rule
-//     — "encoders never consume a slot"); a peripheral encoder's push BUTTON
-//     rides a fixed reg 2 regardless of which connector the encoder sits on
-//     (its rotation itself takes no reg slot at all — relayed natively by
-//     ZMK's own sensor mechanism, not via input-split). Reconstructing a
-//     connector name from that bare integer is this module's own
-//     application of a documented BUILDER rule, not a value the diag record
-//     carries — always `estimated: true`.
+//     device, else reg 1 (rotation devices are never pointing devices for
+//     this rule — "encoders never consume a slot"); a peripheral rotation
+//     device's push BUTTON takes reg 2 on the STANDARD connector and reg 3
+//     on the extension one (§3's ordering rule, `torabo-*-btn-split` /
+//     `-split-ext`; the extension moved off the shared reg 2 on 2026-09-07,
+//     when a build could first carry both buttons at once). The rotation
+//     itself takes no reg slot at all — relayed natively by ZMK's own sensor
+//     mechanism, not via input-split, which is why it arrives as one of the
+//     kind=ENC rows above instead. Reconstructing a connector name from that
+//     bare integer is this module's own application of a documented BUILDER
+//     rule, not a value the diag record carries — always `estimated: true`.
 import {
   CapsSide,
   ModuleKind,
@@ -74,6 +92,7 @@ import {
   DiagRecord,
   Kind as DiagKind,
   Status,
+  diagLabel,
   hasStatus,
   peripheralSlot,
 } from "./diag";
@@ -105,6 +124,12 @@ const KIND_WORD: Partial<Record<ModuleKind, string>> = {
   [ModuleKind.Encoder]: "エンコーダ",
   [ModuleKind.Dial]: "高分解能ダイヤル",
 };
+/** Names a rotation row the declaration has no slot for — see
+ * rotationRowLabel(). Numbered by the wire's own sensor index, the same
+ * number `sensor-bindings` and the dial tab address the device by, and the
+ * same convention the rest of this panel already follows for a number it
+ * cannot turn into a name (diag.ts's 「デバイス N」/「スロットN」). */
+const ROTATION_WORD = "回転デバイス";
 
 /**
  * Bridge from diag.ts's OWN local-row kind numbering (its `Kind`:
@@ -148,10 +173,26 @@ export interface DeclaredLabel {
    * alongside the rendered string because one caller needs the decision, not
    * the wording: isUndetectableDialRow() below. */
   kind: ModuleKind;
+  /** WHICH CONNECTOR the label names, as data rather than as the two words
+   * baked into `text`. The panel groups its rows by half and by connector
+   * (diagGrid() below), and that grouping must read the same decision the
+   * label rendered — not re-derive it by parsing the string back apart.
+   * Null only for a label that names no connector at all: rotationRowLabel()'s
+   * 「回転デバイス #N」, for a knob the declaration has no slot for. */
+  place: DiagPlace | null;
 }
 
-type ConnKey = "std" | "ext";
-type KnownSide = typeof CapsSide.Left | typeof CapsSide.Right;
+export type ConnKey = "std" | "ext";
+export type KnownSide = typeof CapsSide.Left | typeof CapsSide.Right;
+
+/** One of the four declared connectors: a keyboard half plus which of its two
+ * FFC connectors. The unit the panel's grid is addressed by — a column (side)
+ * and a row (connector) — and the unit a resolved label carries so the two
+ * never disagree about where a row belongs. */
+export interface DiagPlace {
+  side: KnownSide;
+  conn: ConnKey;
+}
 
 function isKnownSide(side: CapsSide): side is KnownSide {
   return side === CapsSide.Left || side === CapsSide.Right;
@@ -180,29 +221,160 @@ function makeLabel(
 ): DeclaredLabel | null {
   const kindWord = KIND_WORD[kind];
   if (!kindWord) return null; // Undeclared/None/an unknown nibble: nothing to name
-  return { text: `${SIDE_WORD[side]}${CONN_WORD[conn]}: ${kindWord}`, estimated, kind };
+  return {
+    text: `${SIDE_WORD[side]}${CONN_WORD[conn]}: ${kindWord}`,
+    estimated,
+    kind,
+    place: { side, conn },
+  };
+}
+
+/** The connector's own name, without a kind — 「右拡張」. What a grid cell is
+ * headed with, and what an EMPTY one says instead of a row. Same two words
+ * makeLabel() prefixes a row's label with, from the same two tables. */
+export function placeTitle(place: DiagPlace): string {
+  return `${SIDE_WORD[place.side]}${CONN_WORD[place.conn]}`;
+}
+
+/** The two slot kinds that ride `zmk,keymap-sensors` — the ones that get a
+ * sensor index. Everything else on a connector (pad/ball/4-way) is a pointing
+ * device or nothing at all. */
+function isRotationKind(kind: ModuleKind): boolean {
+  return kind === ModuleKind.Dial || kind === ModuleKind.Encoder;
+}
+
+/** One entry of rotationSlots(): a declared connector that carries a rotation
+ * device, plus which of the two kinds it is. */
+export interface RotationSlot {
+  side: KnownSide;
+  conn: ConnKey;
+  /** ModuleKind.Dial or ModuleKind.Encoder — never anything else. */
+  kind: ModuleKind;
 }
 
 /**
- * LOCAL row (PERIPHERAL status bit clear): match its decoded kind against a
- * half's two connectors. See the module header — this is a wire-fact
- * cross-reference, confident whenever exactly one connector matches.
+ * The declared rotation devices IN SENSOR-INDEX ORDER: entry i is sensor i.
  *
- * Pad/ball rows are matched against the CONNECTED half's connectors only:
- * live_feed_central.c's diag_devs[] wires those from real devicetree nodes
- * (azoteq_iqs7211e / pixart_paw3222) that exist only on the central's own
- * bus, so they can never describe the peripheral's hardware.
+ * The rule is PLAN-dial-tab.md §6.2 and ext_FW's dts/rot/torabo-rot.dtsi:
+ * the PERIPHERAL half's rotation connectors come first (standard, then
+ * extension), then the CENTRAL half's own (standard, then extension). That is
+ * not a preference — a peripheral numbers its own sensors from 0 and ZMK
+ * relays those numbers to the central verbatim (the split sensor event
+ * carries `sensor_index`), so the central's `zmk,keymap-sensors` list has to
+ * start with the peer's devices or every lookup lands on the wrong knob.
+ * torabo-rot-sensors composes that list in exactly this order, which is why
+ * reproducing the order here is enough to name a row: this app and the
+ * firmware are reading the same declaration the same way round.
  *
- * The encoder-kind row is different and is tried against BOTH halves before
- * giving up: it is the one entry in diag_devs[] with `.dev = NULL` — its
- * counters come from "the encoder module" wherever ITS sensor is actually
- * bound, local OR relayed from the peripheral over ZMK's native sensor
- * mechanism (PATTERN-MATRIX.md §0 `input-encoder-recv`, §5.2
- * `input-hires-dial-btn-recv`) — so its physical connector is not fixed to
- * the connected half the way a real local device's is. It is also the diag
- * wire's only stand-in for a dial's push button (the wire has no DIAL kind
- * of its own, see this module's header), so each side is tried against a
- * declared Dial slot too before moving on.
+ * Empty whenever the descriptor cannot place anything — no MODULES row, or a
+ * central side the header never named (there is no peripheral-vs-central
+ * ordering without it, and guessing left/right would be exactly the kind of
+ * inference this module refuses elsewhere). Callers treat an empty list as
+ * "the declaration cannot say", and fall back to diag.ts's plain labels.
+ *
+ * `declared` is the four decoded slot nibbles and `central` the header's
+ * side, i.e. the two halves of DeclaredModules, taken separately so the rule
+ * can be exercised (and read) without a cache shape around it.
+ */
+export function rotationSlots(
+  declared: ModuleSlots | null | undefined,
+  central: CapsSide | null | undefined,
+): RotationSlot[] {
+  if (!declared) return [];
+  if (central === null || central === undefined || !isKnownSide(central)) return [];
+
+  const out: RotationSlot[] = [];
+  // Peripheral half first, then central — §6.2's numbering rule. On a
+  // non-split build the peer half simply declares nothing rotational and
+  // contributes no entries.
+  for (const side of [otherSide(central), central]) {
+    const conns = connectorsOf(declared, side);
+    for (const conn of ["std", "ext"] as ConnKey[]) {
+      if (isRotationKind(conns[conn])) out.push({ side, conn, kind: conns[conn] });
+    }
+  }
+  return out;
+}
+
+/**
+ * Is this row one of the rotation rows — i.e. one of the kind=ENC records
+ * firmware emits one of per rotation sensor?
+ *
+ * LOCAL only. Every rotation row is local by construction: they come from
+ * live_feed_central.c's diag_devs[] entries with `.dev = NULL`, which live on
+ * the central whether the sensor itself is wired to this half or relayed from
+ * the peer. A PERIPHERAL row is a split-receiver entry (a button, a pointing
+ * device) and is never one of these, so it never takes a sensor index.
+ */
+export function isRotationRow(rec: DiagRecord): boolean {
+  return !hasStatus(rec, Status.PERIPHERAL) && rec.metaFields.kind === DiagKind.ENCODER;
+}
+
+/** Does the descriptor place modules at all? Both halves of the answer are
+ * needed before any label below may be invented rather than looked up: the
+ * slot nibbles say what is on each connector, the central side says which
+ * connectors are the peripheral's. Without both, this module is in exactly
+ * the pre-declaration state it has always fallen back from. */
+function hasDeclaration(declared: DeclaredModules | null | undefined): boolean {
+  const central = declared?.centralSide;
+  if (!declared?.moduleSlots) return false;
+  return central !== null && central !== undefined && isKnownSide(central);
+}
+
+/**
+ * Name the sensor-`index` rotation row.
+ *
+ * The declared slot when there is one — a positional match against a list
+ * both this app and the firmware build from the same declaration, so it is no
+ * more of a guess than the declaration itself (`estimated: false`).
+ *
+ * More rotation rows than declared slots means the firmware reported a knob
+ * the descriptor does not account for (a build whose CONFIG_TORABO_SLOT_* and
+ * whose sensor list disagree). Naming it after some other slot would be
+ * worse than not naming it, so it gets the sensor index it actually has —
+ * but only when there IS a declaration to be short: with no descriptor at
+ * all this returns null and the caller falls back to diag.ts's plain
+ * 「エンコーダ」, keeping old firmware pixel-identical to before.
+ */
+function rotationRowLabel(
+  declared: DeclaredModules | null | undefined,
+  slots: RotationSlot[],
+  index: number,
+): DeclaredLabel | null {
+  const slot = slots[index];
+  if (slot) return makeLabel(slot.side, slot.conn, slot.kind, false);
+  if (!hasDeclaration(declared)) return null;
+  return {
+    text: `${ROTATION_WORD} #${index}`,
+    estimated: true,
+    kind: ModuleKind.Undeclared,
+    // No slot to name means no cell to sit in either: this is a knob the
+    // declaration does not account for, so the grid sends it to その他.
+    place: null,
+  };
+}
+
+/**
+ * LOCAL POINTING row (PERIPHERAL status bit clear, kind pad/ball): match its
+ * decoded kind against the connected half's two connectors. See the module
+ * header — this is a wire-fact cross-reference, confident whenever exactly
+ * one connector matches.
+ *
+ * The CONNECTED half's connectors and no others: live_feed_central.c's
+ * diag_devs[] wires these rows from real devicetree nodes (azoteq_iqs7211e /
+ * pixart_paw3222) that exist only on the central's own bus, so they can never
+ * describe the peripheral's hardware.
+ *
+ * ROTATION rows (kind=ENC) are deliberately NOT handled here and return null.
+ * They used to be: the single encoder pseudo-device was tried against the
+ * central's connectors, then the peripheral's, taking whichever side declared
+ * an Encoder — or, failing that, a Dial — first. That search only ever worked
+ * because there was exactly one such row to place. With one kind=ENC row per
+ * rotation sensor it places every one of them on the first matching
+ * connector, which is how a second knob ends up wearing the first one's name
+ * (a left dial + a right extension encoder both resolving to the dial). The
+ * rows are ordered, not typed, so they are named by sensor index instead —
+ * rotationSlots() / rotationRowLabel() above, reached through diagRowViews().
  */
 function localDeclaredLabel(
   declared: DeclaredModules | null | undefined,
@@ -216,25 +388,14 @@ function localDeclaredLabel(
 
   const kind = moduleKindFromDiagKind(rec.metaFields.kind);
   if (kind === undefined) return null; // firmware itself couldn't say — nothing to match
+  if (kind === ModuleKind.Encoder) return null; // a rotation row — see above
 
-  const sides: KnownSide[] = kind === ModuleKind.Encoder ? [central, otherSide(central)] : [central];
-  for (const side of sides) {
-    const conns = connectorsOf(slots, side);
-    const matches = (["std", "ext"] as ConnKey[]).filter((c) => conns[c] === kind);
-    if (matches.length === 1) return makeLabel(side, matches[0], kind, false);
-    if (kind === ModuleKind.Encoder) {
-      const dialMatches = (["std", "ext"] as ConnKey[]).filter(
-        (c) => conns[c] === ModuleKind.Dial,
-      );
-      if (dialMatches.length === 1) return makeLabel(side, dialMatches[0], ModuleKind.Dial, false);
-    }
-    // 0 matches on this side: try the other (encoder only). 2+: a genuine
-    // ambiguity on THIS side (e.g. two declared encoders) — still worth
-    // trying the other side rather than giving up outright, since that
-    // side's own count is independent; two sides both ambiguous simply
-    // exhausts the loop and falls through to null below.
-  }
-  return null;
+  const conns = connectorsOf(slots, central);
+  const matches = (["std", "ext"] as ConnKey[]).filter((c) => conns[c] === kind);
+  // 2+ matches is a genuine ambiguity (a double-pad build, PATTERN-MATRIX.md
+  // §1.3's S8) this module refuses to guess between; 0 means the declaration
+  // did not cover this device. Both fall through to the plain kind label.
+  return matches.length === 1 ? makeLabel(central, matches[0], kind, false) : null;
 }
 
 /**
@@ -257,23 +418,9 @@ function peripheralDeclaredLabel(
   const peripheral = otherSide(central);
   const conns = connectorsOf(slots, peripheral);
 
-  // The one connector (if any) declared Encoder OR Dial — its BUTTON is what
-  // rides the fixed reg 2. A hi-res dial's push button rides the identical
-  // `zmk,input-split` reg=2 channel as an encoder's (PATTERN-MATRIX.md §5.2,
-  // `input-hires-dial-btn`), so this reg-slot convention names either kind —
-  // whichever the descriptor actually declared on that connector. The
-  // rotation itself takes no reg slot at all (relayed by ZMK's own sensor
-  // mechanism instead, for both an encoder and a dial), so there is no
-  // separate "rotation" row to map here.
-  const buttonConn: ConnKey | null =
-    conns.std === ModuleKind.Encoder || conns.std === ModuleKind.Dial
-      ? "std"
-      : conns.ext === ModuleKind.Encoder || conns.ext === ModuleKind.Dial
-        ? "ext"
-        : null;
-
-  if (slot === 2) {
-    return buttonConn ? makeLabel(peripheral, buttonConn, conns[buttonConn], true) : null;
+  if (slot === 2 || slot === 3) {
+    const conn = rotationButtonConn(conns, slot);
+    return conn ? makeLabel(peripheral, conn, conns[conn], true) : null;
   }
 
   if (slot === 0 || slot === 1) {
@@ -287,16 +434,52 @@ function peripheralDeclaredLabel(
     return conn ? makeLabel(peripheral, conn, conns[conn], true) : null;
   }
 
-  return null; // a reg slot this convention has no rule for (>2) — don't guess
+  return null; // a reg slot this convention has no rule for (>3) — don't guess
 }
 
 /**
- * Declared-placement label for one diag row, or null when the descriptor
- * cannot name it — no cache entry, no MODULES row, central side unknown, or
- * an unmatched/ambiguous row. Callers fall back to today's
+ * Which peripheral connector's rotation BUTTON rides reg `slot` (2 or 3), or
+ * null when that connector declares no rotation device.
+ *
+ * The rotation itself takes no reg slot at all — it is relayed by ZMK's own
+ * sensor mechanism and arrives as a kind=ENC row instead — so these two slots
+ * are the only place a knob shows up on the input-split wire. A hi-res dial's
+ * push button rides the identical `zmk,input-split` channel as an encoder's
+ * (PATTERN-MATRIX.md §5.2, `input-hires-dial-btn`), so the convention names
+ * whichever of the two kinds the descriptor actually declared there.
+ *
+ * reg 2 = standard connector, reg 3 = extension (PATTERN-MATRIX.md §3's
+ * ordering rule, `torabo-*-btn-split` / `-split-ext`). The extension only
+ * moved to its own reg on 2026-09-07, when a build could first carry both
+ * buttons at once; before that a lone extension button rode reg 2 like a
+ * standard one. Hence reg 2's fallback to the extension connector — it names
+ * an older build's row exactly as this module always has, and cannot fire on
+ * a newer one, where an extension knob means the standard slot is either
+ * empty or holds a knob of its own and matches first.
+ */
+function rotationButtonConn(
+  conns: Record<ConnKey, ModuleKind>,
+  slot: number,
+): ConnKey | null {
+  if (slot === 3) return isRotationKind(conns.ext) ? "ext" : null;
+  if (slot !== 2) return null;
+  if (isRotationKind(conns.std)) return "std";
+  return isRotationKind(conns.ext) ? "ext" : null;
+}
+
+/**
+ * Declared-placement label for one NON-ROTATION diag row, or null when the
+ * descriptor cannot name it — no cache entry, no MODULES row, central side
+ * unknown, or an unmatched/ambiguous row. Callers fall back to today's
  * shared/diag.ts's diagLabel(rec) unchanged in every one of those cases,
  * which is what keeps old firmware / no-descriptor / a failed caps read
  * pixel-identical to before this module existed.
+ *
+ * A rotation row (isRotationRow) always returns null here: it cannot be named
+ * from its own contents, only from its POSITION among the other rotation rows
+ * — see rotationSlots(). diagRowViews() below is what routes each row to the
+ * right one of the two, and is what the panel actually calls; this stays
+ * exported for the per-row rules it composes and for the tests.
  */
 export function declaredRowLabel(
   declared: DeclaredModules | null | undefined,
@@ -340,40 +523,45 @@ export function isUndetectableDialRow(
 /**
  * Should this PERIPHERAL generic row be hidden as a duplicate?
  *
- * True only when the declared STANDARD connector on the peripheral is an
- * Encoder OR a Dial, and this row is the one the reg-slot convention
- * resolves to that same connector (reg 2, the button — see
- * peripheralDeclaredLabel; a dial's button rides the identical reg=2 channel
- * as an encoder's, PATTERN-MATRIX.md §5.2). That module already has its own
- * diag identity on the panel, so showing this generic row too would read as
- * a second, unexplained device on a connector the user was just told holds
- * the encoder/dial.
+ * Only the rotation BUTTON rows qualify: reg 2 (the peripheral's standard
+ * connector) and reg 3 (its extension one). Each is hidden exactly when that
+ * connector is one of rotationSlots() — i.e. when the knob it belongs to
+ * already has its own kind=ENC row on the panel, named after this very
+ * connector. Showing the generic split-receiver row as well would read as a
+ * second, unexplained device on a connector the user was just told holds the
+ * encoder/dial.
  *
- * Scoped to the STANDARD connector only, matching the request precisely —
- * an encoder or dial declared on the EXTENSION connector is left alone (a
- * dial in particular never is one, by hardware convention — see ModuleKind.
- * Dial's own comment — but the check stays connector-based rather than
- * assuming that).
+ * Connector-by-connector rather than "any knob anywhere": on a build with a
+ * knob on each of the peripheral's connectors both button rows are redundant,
+ * and on one with a knob on only the extension the reg-2 row (if any — there
+ * is no button there to send one) is not this module's to explain. For a
+ * board with a single standard-connector knob this is the same answer the
+ * std-only check gave before reg 3 existed.
  */
 export function shouldHidePeripheralRow(
   declared: DeclaredModules | null | undefined,
   rec: DiagRecord,
 ): boolean {
   if (!hasStatus(rec, Status.PERIPHERAL)) return false;
-  if (peripheralSlot(rec) !== 2) return false;
+  const slot = peripheralSlot(rec);
+  if (slot !== 2 && slot !== 3) return false;
   const central = declared?.centralSide;
   const slots = declared?.moduleSlots;
   if (central === null || central === undefined || !isKnownSide(central)) return false;
   if (!slots) return false;
-  const std = connectorsOf(slots, otherSide(central)).std;
-  return std === ModuleKind.Encoder || std === ModuleKind.Dial;
+
+  const peripheral = otherSide(central);
+  const conn: ConnKey = slot === 2 ? "std" : "ext";
+  return rotationSlots(slots, central).some(
+    (s) => s.side === peripheral && s.conn === conn,
+  );
 }
 
 /**
- * Should the always-present local "encoder pseudo-device" row be hidden
- * because it is firmware's empty placeholder, not a real device?
+ * Should this local "encoder pseudo-device" row be hidden because it is
+ * firmware's empty placeholder, not a real device?
  *
- * live_feed_central.c's diag_devs[] table carries ONE encoder pseudo-device
+ * live_feed_central.c's diag_devs[] table carries an encoder pseudo-device
  * unconditionally (`.dev = NULL, .base_meta = LIVE_FEED_META_KIND_ENC`) —
  * present in every heartbeat/READ regardless of whether TORABO_FEAT_ENCODER
  * is actually compiled in. `enc_diag_get()` is `__weak` and returns false
@@ -385,11 +573,10 @@ export function shouldHidePeripheralRow(
  *
  * True when:
  *   - the descriptor declares placement (moduleSlots present) and NO slot on
- *     the whole board is ModuleKind.Encoder OR ModuleKind.Dial — a declared
- *     Dial also explains this row (localDeclaredLabel() above resolves it
- *     to "…: 高分解能ダイヤル" via the same wire signal, since the diag wire
- *     has no kind of its own for a dial). The declaration is authoritative,
- *     so hide regardless of this row's own status; or
+ *     the whole board carries a rotation device — no Encoder, no Dial. A
+ *     declared Dial explains the row just as well as an Encoder does, since
+ *     the diag wire has no kind of its own for a dial. The declaration is
+ *     authoritative, so hide regardless of this row's own status; or
  *   - the descriptor cannot say (no MODULES row / no cache yet / a failed
  *     read) and this row is not currently PRESENT — the conservative
  *     fallback: a genuine encoder (or dial button) on firmware that
@@ -399,28 +586,155 @@ export function shouldHidePeripheralRow(
  * anywhere" is treated as authoritative over the row's own status, per the
  * request ("no encoder declared → no row").
  *
+ * Deliberately NOT expressed as `rotationSlots().length === 0`, even though
+ * that names the same set of slots: rotationSlots() additionally needs the
+ * central side, to put the two halves in sensor order. A descriptor that
+ * names placement but no central half (an older header's CapsSide.Unknown)
+ * can still say perfectly well that a knob exists somewhere — ordering is a
+ * different question from existence, and only the second is asked here.
+ *
  * LOCAL rows only (kind bits are the only thing this pseudo-device's meta
  * ever carries — side/conn are always 0 at the C layer, see this module's
  * header); a PERIPHERAL row is never this pseudo-device and always returns
- * false here.
+ * false here. With one such row per rotation sensor the answer is the same
+ * for every one of them: either the board declares a knob and they all stay,
+ * or it declares none and they all go.
  */
 export function shouldHideAbsentEncoderRow(
   declared: DeclaredModules | null | undefined,
   rec: DiagRecord,
 ): boolean {
-  if (hasStatus(rec, Status.PERIPHERAL)) return false;
-  if (rec.metaFields.kind !== DiagKind.ENCODER) return false;
+  if (!isRotationRow(rec)) return false;
 
   const slots = declared?.moduleSlots;
   if (slots) {
-    const declaresAnywhere = (kind: ModuleKind) =>
-      slots.leftStd === kind ||
-      slots.leftExt === kind ||
-      slots.rightStd === kind ||
-      slots.rightExt === kind;
-    const explained = declaresAnywhere(ModuleKind.Encoder) || declaresAnywhere(ModuleKind.Dial);
-    return !explained;
+    return !(
+      isRotationKind(slots.leftStd) ||
+      isRotationKind(slots.leftExt) ||
+      isRotationKind(slots.rightStd) ||
+      isRotationKind(slots.rightExt)
+    );
   }
 
   return !hasStatus(rec, Status.PRESENT);
+}
+
+/**
+ * One rendered row of the panel: DiagPanel.tsx maps this straight onto DOM.
+ *
+ * `rec` is null for a SYNTHESIZED row — a declared rotation slot the firmware
+ * never sent a record for (see diagRowViews). Such a row has a name and
+ * nothing else: no chip read out of status bits, no counters, no last-seen,
+ * no event count. That is the point of it.
+ */
+export interface DiagRowView {
+  /** Stable React key. */
+  key: string;
+  /** The rendered label — a declared name, or diag.ts's own fallback. */
+  label: string;
+  /** The record this row renders, or null when the row is synthesized. */
+  rec: DiagRecord | null;
+  /** Render diag.ts's UNDETECTABLE_CHIP and suppress the counters, instead of
+   * reading a chip out of status bits nothing ever wrote. Always true for a
+   * synthesized row. */
+  undetectable: boolean;
+  /** Which declared connector this row belongs to — the grid cell it lands
+   * in — or null when nothing placed it. Taken from the label that was
+   * actually rendered (DeclaredLabel.place), never re-derived from its text.
+   *
+   * Null is the honest answer in exactly the cases the label itself fell back
+   * in, and they are the ones その他 exists for: no capability descriptor at
+   * all (old firmware, a failed caps read, no sync yet), a descriptor with no
+   * MODULES row or no central side, a local pointing row whose kind matches
+   * none — or both — of the connected half's connectors, a peripheral row on
+   * a reg slot the builder convention has no rule for, and a rotation row
+   * beyond the last declared rotation slot. */
+  place: DiagPlace | null;
+}
+
+/** A named, measurement-free row for a declared rotation slot the firmware
+ * sent nothing for. */
+function synthesizedRotationRow(slot: RotationSlot, index: number): DiagRowView {
+  const label = makeLabel(slot.side, slot.conn, slot.kind, false);
+  return {
+    key: `rot-${index}`,
+    // makeLabel is null only for a kind with no word, which a rotation slot
+    // never is; the fallback is here so a future one cannot render blank.
+    label: label ? label.text : `${ROTATION_WORD} #${index}`,
+    rec: null,
+    undetectable: true,
+    // From the SLOT, not from the label: a synthesized row exists because a
+    // declared connector reported nothing, so its cell is known even in the
+    // impossible case where the kind had no word to render.
+    place: { side: slot.side, conn: slot.conn },
+  };
+}
+
+/**
+ * The panel's rows, in render order: today's records minus the two kinds of
+ * redundant row, each carrying its resolved label, plus one synthesized row
+ * per declared rotation slot the firmware did not report.
+ *
+ * ROTATION ROWS. Their labels come from their POSITION, so they cannot be
+ * resolved one at a time the way every other row can — this function is where
+ * the whole list is in scope, and is therefore the only place that assigns
+ * them. Sensor index = position among the kind=ENC rows by ascending
+ * device_id, per the contract in this module's header.
+ *
+ * SYNTHESIZED ROWS. Firmware that predates the per-sensor records sends one
+ * kind=ENC row no matter how many knobs the board declares, so a two-knob
+ * build would otherwise silently show one. The unreported slots get a named
+ * row reading 検知不可 with no numbers under it — the same claim
+ * isUndetectableDialRow makes about a dial, for the same reason: nothing was
+ * measured, and "cw 0 / ccw 0 / btn 0" would present three unmeasured zeros
+ * as measurements. They sit immediately after the last real rotation row so
+ * the knobs stay together in sensor order, and are never emitted before the
+ * first record arrives — an empty panel means 「診断データを待機中…」, not a
+ * board with nothing on it.
+ */
+export function diagRowViews(
+  declared: DeclaredModules | null | undefined,
+  records: DiagRecord[],
+): DiagRowView[] {
+  if (records.length === 0) return [];
+
+  const visible = records.filter(
+    (rec) =>
+      !shouldHidePeripheralRow(declared, rec) &&
+      !shouldHideAbsentEncoderRow(declared, rec),
+  );
+  const slots = rotationSlots(declared?.moduleSlots, declared?.centralSide);
+  const sensorIds = visible
+    .filter(isRotationRow)
+    .map((rec) => rec.deviceId)
+    .sort((a, b) => a - b);
+
+  const out: DiagRowView[] = [];
+  // Where the synthesized rows go: after the last rotation row, or at the very
+  // end when the firmware sent none at all.
+  let anchor = 0;
+  for (const rec of visible) {
+    const rotation = isRotationRow(rec);
+    const label = rotation
+      ? rotationRowLabel(declared, slots, sensorIds.indexOf(rec.deviceId))
+      : declaredRowLabel(declared, rec);
+    out.push({
+      key: `dev-${rec.deviceId}`,
+      label: label ? label.text : diagLabel(rec),
+      rec,
+      undetectable: isUndetectableDialRow(label, rec),
+      place: label?.place ?? null,
+    });
+    if (rotation) anchor = out.length;
+  }
+  if (anchor === 0) anchor = out.length;
+
+  out.splice(
+    anchor,
+    0,
+    ...slots
+      .slice(sensorIds.length)
+      .map((slot, i) => synthesizedRotationRow(slot, sensorIds.length + i)),
+  );
+  return out;
 }

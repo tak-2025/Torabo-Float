@@ -42,13 +42,23 @@
 // only invited the reader to distrust a correct label. A row is named the way
 // it was declared, or it falls back to diag.ts's plain kind-word label.
 //
-// Two rows are additionally dropped from `visible` before rendering (both in
-// diagLayout.ts, both no-ops when the declaration can't say): a peripheral
-// generic row that duplicates a declared encoder/dial's own identity
-// (shouldHidePeripheralRow), and firmware's always-present local "encoder"
-// pseudo-device row when the board declares no encoder anywhere — e.g. a
-// dial instead (shouldHideAbsentEncoderRow). Neither ever drops a row that
-// is reporting real presence when placement can't be determined.
+// The row LIST itself comes from diagLayout.ts's diagRowViews(), not from the
+// records directly, because three of its decisions need the whole list rather
+// than one record:
+//
+//   - which rotation row is which device. Every knob — dial or encoder —
+//     arrives as a kind=ENC record (the wire has no dial kind), one per
+//     rotation sensor, so a row's identity is its POSITION among them, not
+//     anything it says about itself.
+//   - which rows to drop as redundant: a peripheral split-receiver row that
+//     duplicates a declared knob's own identity (its push button, reg 2/3),
+//     and firmware's always-present local "encoder" pseudo-device row on a
+//     board that declares no knob anywhere. Neither ever drops a row that is
+//     reporting real presence when placement can't be determined.
+//   - which declared knobs the firmware never reported at all: older firmware
+//     sends a single kind=ENC row however many knobs the board declares, so
+//     the missing ones are SYNTHESIZED here — named, 検知不可, and carrying
+//     no numbers whatsoever (`rec: null` below).
 //
 // One row's CHIP is decided by the declaration too: a declared hi-res dial
 // has no diagnostics behind it at all, so its all-zero status reads 検知不可
@@ -58,18 +68,14 @@
 import type { CachedKeymap } from "./keymap/types";
 import {
   DeclaredModules,
-  declaredRowLabel,
-  isUndetectableDialRow,
-  shouldHideAbsentEncoderRow,
-  shouldHidePeripheralRow,
+  DiagRowView,
+  diagRowViews,
 } from "./diagLayout";
 import {
-  DiagRecord,
   Status,
   UNDETECTABLE_CHIP,
   encoderCounters,
   diagChip,
-  diagLabel,
   formatLastSeen,
   hasStatus,
 } from "./diag";
@@ -92,11 +98,7 @@ export function DiagPanel({
     centralSide: cache?.centralSide ?? null,
   };
 
-  const visible = records.filter(
-    (rec) =>
-      !shouldHidePeripheralRow(declared, rec) &&
-      !shouldHideAbsentEncoderRow(declared, rec),
-  );
+  const rows = diagRowViews(declared, records);
 
   return (
     <div className="diag">
@@ -108,17 +110,12 @@ export function DiagPanel({
         <div className="muted diag-note">
           この firmware は診断モード非対応です。
         </div>
-      ) : visible.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div className="muted diag-note">診断データを待機中…</div>
       ) : (
         <div className="diag-list">
-          {visible.map((rec) => (
-            <DiagRow
-              key={rec.deviceId}
-              rec={rec}
-              nowTickMs={nowTickMs}
-              declared={declared}
-            />
+          {rows.map((row) => (
+            <DiagRow key={row.key} row={row} nowTickMs={nowTickMs} />
           ))}
         </div>
       )}
@@ -126,46 +123,43 @@ export function DiagPanel({
   );
 }
 
-function DiagRow({
-  rec,
-  nowTickMs,
-  declared,
-}: {
-  rec: DiagRecord;
-  nowTickMs: number;
-  declared: DeclaredModules;
-}) {
-  const showErr = hasStatus(rec, Status.ERR) && rec.errCode !== 0;
-
-  const label = declaredRowLabel(declared, rec);
-  // A declared dial's row has no diagnostics behind it, so its cleared status
-  // bits mean "cannot be probed", not "not fitted" — isUndetectableDialRow
-  // owns that one condition (and leaves a declared ENCODER reading 非搭載).
-  const undetectable = isUndetectableDialRow(label, rec);
-  const chip = undetectable ? UNDETECTABLE_CHIP : diagChip(rec);
+function DiagRow({ row, nowTickMs }: { row: DiagRowView; nowTickMs: number }) {
+  const { label, rec } = row;
+  // A row whose measurements were never taken — a declared dial (no
+  // diagnostics behind it at all, so its cleared status bits mean "cannot be
+  // probed", not "not fitted") or a declared knob this firmware sent no
+  // record for. diagLayout.ts owns both conditions.
+  const undetectable = row.undetectable || !rec;
+  const chip = undetectable || !rec ? UNDETECTABLE_CHIP : diagChip(rec);
   // `detail` is a positional overload (live_feed.h:117-126); encoderCounters()
   // owns the one condition under which it means cw/ccw/btn, so this row never
-  // decides it for itself. Suppressed on the undetectable-dial row for the
-  // same reason its chip is not 非搭載: those counters come from the same
+  // decides it for itself. Suppressed on an undetectable row for the same
+  // reason its chip is not 非搭載: those counters come from the same
   // `enc_diag_get()` that never ran, so printing "cw 0 / ccw 0 / btn 0" under
   // a 検知不可 chip would present three unmeasured zeros as measurements.
-  const enc = undetectable ? null : encoderCounters(rec);
+  const enc = rec && !undetectable ? encoderCounters(rec) : null;
+  const showErr = !!rec && hasStatus(rec, Status.ERR) && rec.errCode !== 0;
 
   return (
     <div className="diag-row">
       <div className="diag-row-head">
-        <span className="diag-label">{label ? label.text : diagLabel(rec)}</span>
+        <span className="diag-label">{label}</span>
         <span className={`diag-chip diag-chip-${chip.health}`}>
           {chip.icon} {chip.label}
         </span>
       </div>
-      <div className="diag-row-meta">
-        <span className="diag-badge">最終 {formatLastSeen(rec, nowTickMs)}</span>
-        <span className="diag-badge">count {rec.eventCount}</span>
-        {showErr && (
-          <span className="diag-badge diag-badge-err">err {rec.errCode}</span>
-        )}
-      </div>
+      {/* A synthesized row has no record behind it, so it gets no freshness
+          and no event count either — the same "never print an unmeasured
+          zero" rule the counters follow. */}
+      {rec && (
+        <div className="diag-row-meta">
+          <span className="diag-badge">最終 {formatLastSeen(rec, nowTickMs)}</span>
+          <span className="diag-badge">count {rec.eventCount}</span>
+          {showErr && (
+            <span className="diag-badge diag-badge-err">err {rec.errCode}</span>
+          )}
+        </div>
+      )}
       {enc && (
         <div className="diag-row-enc">
           cw {enc.cw} / ccw {enc.ccw} / btn {enc.btn}

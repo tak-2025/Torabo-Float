@@ -62,5 +62,12 @@
     }
   },
   "include": ["src", "../shared"],
+  /* ../shared's vitest files are the desktop project's to type check (vitest
+     is a devDependency of the repo root, and .github/workflows/pages.yml
+     installs web/ alone — so a `*.test.ts` in here would fail CI on an import
+     of a package this project never had). Nothing imports them, so they are
+     absent from the bundle either way. "node_modules" restates the default
+     exclude, which naming this key at all would otherwise drop. */
+  "exclude": ["node_modules", "../shared/**/*.test.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
