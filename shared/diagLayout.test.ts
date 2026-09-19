@@ -21,6 +21,7 @@ import {
   declaredRowLabel,
   diagGrid,
   diagRowViews,
+  makeLabel,
   rotationSlots,
   shouldHidePeripheralRow,
 } from "./diagLayout";
@@ -160,6 +161,19 @@ describe("rotationSlots", () => {
       rotationSlots(slots({ leftStd: ModuleKind.Dial }), CapsSide.Unknown),
     ).toEqual([]);
     expect(rotationSlots(slots({ leftStd: ModuleKind.Dial }), null)).toEqual([]);
+  });
+});
+
+describe("KIND_WORD", () => {
+  it("names a declared 4-way switch slot", () => {
+    // FourWaySwitch (caps.h TORABO_CAPS_SLOT_SWITCH4) is a kscan matrix
+    // device with no diag-wire representation at all, so no diag row ever
+    // resolves to it in practice — unlike Dial/Encoder/Pad/Ball, it has no
+    // diagRowViews()-level test. This pins the label makeLabel() renders for
+    // it directly, the same word KIND_WORD carries for every other kind.
+    expect(makeLabel(CapsSide.Left, "std", ModuleKind.FourWaySwitch, false)?.text).toBe(
+      "左標準: 4方向スイッチ",
+    );
   });
 });
 

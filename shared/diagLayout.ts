@@ -121,6 +121,7 @@ const SIDE_WORD: Record<KnownSide, string> = {
 const KIND_WORD: Partial<Record<ModuleKind, string>> = {
   [ModuleKind.Pad]: "パッド",
   [ModuleKind.Ball]: "ボール",
+  [ModuleKind.FourWaySwitch]: "4方向スイッチ",
   [ModuleKind.Encoder]: "エンコーダ",
   [ModuleKind.Dial]: "高分解能ダイヤル",
 };
@@ -213,7 +214,15 @@ function connectorsOf(slots: ModuleSlots, side: KnownSide): Record<ConnKey, Modu
     : { std: slots.rightStd, ext: slots.rightExt };
 }
 
-function makeLabel(
+/** Exported for the tests below, same as declaredRowLabel(): KIND_WORD covers
+ * every declarable ModuleKind, but only Dial/Encoder (rotation, via
+ * rotationRowLabel/synthesizedRotationRow) and Pad/Ball (local/peripheral
+ * pointing rows, via localDeclaredLabel/peripheralDeclaredLabel) currently
+ * reach this function through a real diag row — FourWaySwitch (kscan matrix
+ * device, no diag wire representation at all, see toraboCaps.ts's ModuleKind
+ * doc) and a future undocumented nibble have no diag-driven caller yet, so a
+ * direct call is the only way to pin their rendered text. */
+export function makeLabel(
   side: KnownSide,
   conn: ConnKey,
   kind: ModuleKind,
