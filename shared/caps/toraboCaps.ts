@@ -536,9 +536,13 @@ export const ModuleKind = {
   Undeclared: 0,
   Ball: 1,
   Pad: 2,
-  /** A 4-direction switch module. Reserved: no builder emits this slot value
-   * yet, but the decoder already knows its name so a future build that does
-   * needs no app change. */
+  /** A 4-direction switch module (sekigon's official kscan-4-direction-switch
+   * module). Standard-connector-only — half-body only, no extension variant.
+   * The one slot kind that grows the key MATRIX itself rather than adding a
+   * pointing/rotation device: its four directions are extra row-5 keys (L
+   * 66→71 / M 52→57 / S 44→49), so unlike Ball/Pad/Dial/Encoder it has no
+   * representation on the trackpad wire or the diag wire at all — see
+   * ModuleKind's doc comment above. Builder support landed 2026-09-19. */
   FourWaySwitch: 3,
   /**
    * A high-resolution dial (高分解能ダイヤル), TORABO_CAPS_SLOT_DIAL in caps.h.
